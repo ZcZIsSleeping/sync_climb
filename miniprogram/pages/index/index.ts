@@ -562,11 +562,21 @@ Page({
     teamDayPreviewTitle: '',
     teamDayPreviewEvents: [] as TeamCalendarEvent[],
     memberGearEditors: [] as MemberGearEditor[],
+    dragGhostVisible: false,
+    dragGhostLabel: '',
+    dragGhostColor: '',
+    dragGhostStyle: '',
   },
 
   longPressActive: false,
   touchStartDate: '',
   touchLastDate: '',
+  eventDragActive: false,
+  eventDragScope: '' as '' | 'calendar' | 'team',
+  eventDragId: '',
+  eventDragDuration: 1,
+  eventDragLastDate: '',
+  suppressNextEventTap: false,
 
   onLoad() {
     this.refreshMonths()
@@ -823,6 +833,10 @@ Page({
   },
 
   onTeamEventTap(event: TouchEventLike) {
+    if (this.suppressNextEventTap) {
+      this.suppressNextEventTap = false
+      return
+    }
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
     if (!found) return
@@ -834,6 +848,60 @@ Page({
       teamDetailEvent: found,
       memberGearEditors: this.buildMemberGearEditors(found),
     })
+  },
+
+  onTeamEventLongPress(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
+    if (!found || !found.isTeamEvent) return
+    wx.vibrateShort({ type: 'light' })
+    this.eventDragActive = true
+    this.eventDragScope = 'team'
+    this.eventDragId = id
+    this.eventDragDuration = durationDays(found)
+    this.eventDragLastDate = found.start
+    this.setData({
+      scrollEnabled: false,
+      teamSelectingStart: found.start,
+      teamSelectingEnd: found.end,
+      teamDetailEvent: null,
+      otherEventPreview: null,
+      teamDayPreviewDate: '',
+      dragGhostVisible: true,
+      dragGhostLabel: `${found.title}(${found.creator})`,
+      dragGhostColor: `event-segment--${found.color}`,
+      dragGhostStyle: this.dragGhostStyleFromEvent(event),
+    }, () => this.refreshTeamMonths())
+  },
+
+  onTeamEventTouchMove(event: TouchEventLike) {
+    if (!this.eventDragActive || this.eventDragScope !== 'team') return
+    const touch = event.touches[0]
+    this.setData({ dragGhostStyle: this.dragGhostStyle(touch.clientX, touch.clientY) })
+    this.updateEventDragFromPoint(touch.clientX, touch.clientY, '.team-day-cell')
+  },
+
+  onTeamEventTouchEnd() {
+    if (!this.eventDragActive || this.eventDragScope !== 'team') return
+    const target = this.eventDragLastDate
+    const id = this.eventDragId
+    const duration = this.eventDragDuration
+    const teamEvents = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).map((item) => {
+      if (item.id !== id) return item
+      return {
+        ...item,
+        start: target,
+        end: dateKey(addDays(dateFromKey(target), duration - 1)),
+      }
+    })
+    this.resetEventDrag()
+    this.setData({
+      teamEvents,
+      scrollEnabled: true,
+      teamSelectingStart: '',
+      teamSelectingEnd: '',
+      dragGhostVisible: false,
+    }, () => this.refreshTeamMonths())
   },
 
   onTeamMoreTap(event: TouchEventLike) {
@@ -887,6 +955,10 @@ Page({
   },
 
   onCalendarEventTap(event: TouchEventLike) {
+    if (this.suppressNextEventTap) {
+      this.suppressNextEventTap = false
+      return
+    }
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
     if (!found) return
@@ -909,6 +981,101 @@ Page({
       createVisible: false,
     })
     this.positionExpandedPanel(date)
+  },
+
+  onCalendarEventLongPress(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    const found = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
+    if (!found) return
+    wx.vibrateShort({ type: 'light' })
+    this.eventDragActive = true
+    this.eventDragScope = 'calendar'
+    this.eventDragId = id
+    this.eventDragDuration = durationDays(found)
+    this.eventDragLastDate = found.start
+    this.setData({
+      scrollEnabled: false,
+      selectingStart: found.start,
+      selectingEnd: found.end,
+      expandedDate: '',
+      editingEvent: null,
+      dragGhostVisible: true,
+      dragGhostLabel: `${found.title}(${found.creator})`,
+      dragGhostColor: `event-segment--${found.color}`,
+      dragGhostStyle: this.dragGhostStyleFromEvent(event),
+    }, () => this.refreshMonths())
+  },
+
+  onCalendarEventTouchMove(event: TouchEventLike) {
+    if (!this.eventDragActive || this.eventDragScope !== 'calendar') return
+    const touch = event.touches[0]
+    this.setData({ dragGhostStyle: this.dragGhostStyle(touch.clientX, touch.clientY) })
+    this.updateEventDragFromPoint(touch.clientX, touch.clientY, '.day-cell')
+  },
+
+  onCalendarEventTouchEnd() {
+    if (!this.eventDragActive || this.eventDragScope !== 'calendar') return
+    const target = this.eventDragLastDate
+    const id = this.eventDragId
+    const duration = this.eventDragDuration
+    const events = ((this.data as { events: ClimbEvent[] }).events).map((item) => {
+      if (item.id !== id) return item
+      return {
+        ...item,
+        start: target,
+        end: dateKey(addDays(dateFromKey(target), duration - 1)),
+      }
+    })
+    this.resetEventDrag()
+    this.setData({
+      events,
+      scrollEnabled: true,
+      selectingStart: '',
+      selectingEnd: '',
+      dragGhostVisible: false,
+    }, () => this.refreshMonths())
+  },
+
+  updateEventDragFromPoint(x: number, y: number, selector: string) {
+    wx.createSelectorQuery()
+      .selectAll(selector)
+      .boundingClientRect((rects) => {
+        const match = rects.find((rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
+        if (!match || !match.id) return
+        const date = match.id.replace(/^td/, '').replace(/^d/, '')
+        if (date === this.eventDragLastDate) return
+        this.eventDragLastDate = date
+        const end = dateKey(addDays(dateFromKey(date), this.eventDragDuration - 1))
+        if (this.eventDragScope === 'calendar') {
+          this.setData({ selectingStart: date, selectingEnd: end }, () => this.refreshMonths())
+          return
+        }
+        this.setData({ teamSelectingStart: date, teamSelectingEnd: end }, () => this.refreshTeamMonths())
+      })
+      .exec()
+  },
+
+  resetEventDrag() {
+    this.eventDragActive = false
+    this.eventDragScope = ''
+    this.eventDragId = ''
+    this.eventDragDuration = 1
+    this.eventDragLastDate = ''
+    this.suppressNextEventTap = true
+    this.setData({ dragGhostVisible: false, dragGhostLabel: '', dragGhostColor: '', dragGhostStyle: '' })
+    setTimeout(() => {
+      this.suppressNextEventTap = false
+    }, 360)
+  },
+
+  dragGhostStyleFromEvent(event: TouchEventLike): string {
+    const touch = event.touches[0]
+    if (!touch) return this.dragGhostStyle(92, 18)
+    return this.dragGhostStyle(touch.clientX, touch.clientY)
+  },
+
+  dragGhostStyle(x: number, y: number): string {
+    return `left:${Math.max(12, x - 92)}px;top:${Math.max(12, y - 18)}px;`
   },
 
   updateSelectionFromPoint(x: number, y: number) {

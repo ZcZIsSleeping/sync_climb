@@ -51,6 +51,9 @@
                 class="event-segment {{segment.color}}"
                 style="{{segment.style}}"
                 data-id="{{segment.id}}"
+                bindlongpress="onCalendarEventLongPress"
+                bindtouchmove="onCalendarEventTouchMove"
+                bindtouchend="onCalendarEventTouchEnd"
                 bindtap="onCalendarEventTap"
               >
                 <text class="segment-title">{{segment.label}}</text>
@@ -167,6 +170,9 @@
                   class="event-segment {{segment.color}}"
                   style="{{segment.style}}"
                   data-id="{{segment.id}}"
+                  bindlongpress="onTeamEventLongPress"
+                  bindtouchmove="onTeamEventTouchMove"
+                  bindtouchend="onTeamEventTouchEnd"
                   bindtap="onTeamEventTap"
                 >
                   <text class="segment-title">{{segment.label}}</text>
@@ -373,6 +379,10 @@
         />
       </view>
     </view>
+  </view>
+
+  <view wx:if="{{dragGhostVisible}}" class="drag-ghost {{dragGhostColor}}" style="{{dragGhostStyle}}">
+    <text class="segment-title">{{dragGhostLabel}}</text>
   </view>
 
   <view class="edit-backdrop" wx:if="{{editingEvent}}" bindtap="closeEdit">
