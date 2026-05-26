@@ -1,0 +1,149 @@
+<view class="page">
+  <view class="app-shell">
+    <view class="topbar">
+      <text class="brand">Calendar</text>
+      <view class="topbar-actions">
+        <view class="icon-button"><view class="filter-icon"></view></view>
+        <view class="icon-button"><view class="plus-icon"></view></view>
+      </view>
+    </view>
+
+    <scroll-view
+      class="calendar-scroll"
+      scroll-y="{{scrollEnabled}}"
+      enhanced="true"
+      lower-threshold="520"
+      bindscrolltolower="onScrollToLower"
+    >
+      <view class="month" wx:for="{{months}}" wx:key="key">
+        <view class="month-title">{{item.title}}</view>
+        <view class="weekday-row">
+          <text class="weekday" wx:for="{{weekdays}}" wx:key="*this">{{item}}</text>
+        </view>
+
+        <view class="month-grid">
+          <view class="week-row" wx:for="{{item.weeks}}" wx:for-item="week" wx:for-index="weekIndex" wx:key="weekIndex">
+            <view class="days-layer">
+              <view
+                wx:for="{{week.days}}"
+                wx:for-item="day"
+                wx:key="date"
+                id="d{{day.date}}"
+                class="day-cell {{day.isBlank ? 'day-cell--blank' : ''}} {{day.isSelecting ? 'day-cell--selecting' : ''}} {{day.date === expandedDate ? 'day-cell--expanded' : ''}}"
+                data-date="{{day.date}}"
+                data-blank="{{day.isBlank}}"
+                bindtouchstart="onDayTouchStart"
+                bindlongpress="onDayLongPress"
+                bindtouchmove="onDayTouchMove"
+                bindtouchend="onDayTouchEnd"
+                bindtap="onDayTap"
+              >
+                <text wx:if="{{!day.isBlank}}" class="day-number {{day.isToday ? 'day-number--today' : ''}}">{{day.day}}</text>
+              </view>
+            </view>
+
+            <view class="event-layer">
+              <view
+                wx:for="{{week.segments}}"
+                wx:for-item="segment"
+                wx:key="id"
+                class="event-segment {{segment.color}}"
+                style="{{segment.style}}"
+              >
+                <text class="segment-title">{{segment.label}}</text>
+              </view>
+              <view
+                wx:for="{{week.moreMarkers}}"
+                wx:for-item="marker"
+                wx:key="date"
+                class="more-marker"
+                style="{{marker.style}}"
+              >
+                <text>+{{marker.count}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="scroll-spacer"></view>
+    </scroll-view>
+
+    <view class="tabbar">
+      <view class="tab-item tab-item--active">
+        <view class="calendar-icon"></view>
+        <text>Calendar</text>
+      </view>
+      <view class="tab-item">
+        <view class="team-icon">
+          <view class="team-head team-head--left"></view>
+          <view class="team-head team-head--right"></view>
+          <view class="team-body team-body--left"></view>
+          <view class="team-body team-body--right"></view>
+        </view>
+        <text>Team</text>
+      </view>
+      <view class="tab-item">
+        <view class="tent-icon"></view>
+        <text>BaseCamp</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="expanded-backdrop" wx:if="{{expandedDate}}" bindtap="closeExpanded">
+    <view class="expanded-panel" style="{{expandedPanelStyle}}" catchtap="noop">
+      <view class="panel-head">
+        <view class="panel-title">
+          <text>{{expandedTitle}}</text>
+          <text class="panel-subtitle">{{expandedEvents.length}} 个事件</text>
+        </view>
+        <view class="close-button" bindtap="closeExpanded">×</view>
+      </view>
+      <view
+        wx:for="{{expandedEvents}}"
+        wx:key="id"
+        class="event-preview"
+        data-id="{{item.id}}"
+        bindtap="onEventTap"
+      >
+        <view class="preview-accent {{item.color === 'pink' ? 'preview-accent--pink' : ''}}"></view>
+        <view class="preview-main">
+          <text class="preview-title">{{item.title}}({{item.creator}})</text>
+          <text class="preview-id">#{{item.id}}</text>
+        </view>
+        <text class="preview-time">{{item.range}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="create-sheet" wx:if="{{createVisible}}">
+    <view class="sheet-card">
+      <view class="sheet-copy">
+        <text class="sheet-title">新建攀登日程</text>
+        <text class="sheet-range">{{createRangeText}}</text>
+      </view>
+      <input
+        class="sheet-input"
+        value="{{createTitle}}"
+        placeholder="输入事件名称"
+        focus="true"
+        bindinput="onCreateInput"
+      />
+      <view class="sheet-actions">
+        <button class="ghost-button" bindtap="cancelCreate">取消</button>
+        <button class="primary-button" bindtap="saveCreatedEvent">创建</button>
+      </view>
+    </view>
+  </view>
+
+  <view class="edit-backdrop" wx:if="{{editingEvent}}" bindtap="closeEdit">
+    <view class="edit-card" catchtap="noop">
+      <text class="edit-heading">编辑事件</text>
+      <input class="edit-input" value="{{editTitle}}" focus="true" bindinput="onEditInput" />
+      <view class="edit-meta">{{editingEvent.range}} · {{editingEvent.creator}}</view>
+      <view class="edit-actions">
+        <button class="delete-button" bindtap="deleteEditingEvent">删除</button>
+        <button class="primary-button" bindtap="saveEditedEvent">保存</button>
+      </view>
+    </view>
+  </view>
+</view>

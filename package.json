@@ -1,0 +1,9 @@
+{
+  "name": "syn-climb",
+  "version": "1.0.0",
+  "private": true,
+  "devDependencies": {
+    "miniprogram-api-typings": "^2.8.3-1",
+    "typescript": "^5.8.3"
+  }
+}

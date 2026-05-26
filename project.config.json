@@ -1,0 +1,13 @@
+{
+  "miniprogramRoot": "miniprogram/",
+  "compileType": "miniprogram",
+  "setting": {
+    "useCompilerPlugins": [
+      "typescript"
+    ],
+    "es6": true,
+    "minified": false
+  },
+  "appid": "touristappid",
+  "projectname": "syn_climb"
+}

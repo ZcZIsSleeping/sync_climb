@@ -1,0 +1,13 @@
+{
+  "pages": [
+    "pages/index/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "同步攀登",
+    "navigationBarTextStyle": "black",
+    "navigationBarBackgroundColor": "#f7f9fc",
+    "backgroundColor": "#f7f9fc"
+  },
+  "style": "v2",
+  "sitemapLocation": "sitemap.json"
+}
