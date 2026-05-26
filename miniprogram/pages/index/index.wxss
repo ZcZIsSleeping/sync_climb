@@ -288,6 +288,13 @@ page {
   border-color: rgba(145, 124, 207, 0.16);
 }
 
+.event-segment--pending {
+  border-style: dashed;
+  border-width: 3rpx;
+  background: rgba(255, 255, 255, 0.44);
+  box-shadow: none;
+}
+
 .segment-title {
   overflow: hidden;
   color: #2363a5;
@@ -1153,6 +1160,7 @@ page {
 
 .expanded-backdrop,
 .edit-backdrop,
+.invite-backdrop,
 .team-edit-backdrop,
 .team-event-backdrop,
 .team-day-preview-backdrop {
@@ -1254,6 +1262,60 @@ page {
 
 .team-event-detail--closing {
   animation: team-event-shrink 220ms ease-in both;
+}
+
+.invite-backdrop {
+  z-index: 42;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 52rpx;
+}
+
+.invite-card {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 32rpx;
+  border: 1rpx solid rgba(127, 143, 164, 0.2);
+  border-radius: 34rpx;
+  background: rgba(255, 255, 255, 0.76);
+  box-shadow: 0 30rpx 86rpx rgba(38, 54, 78, 0.22);
+  backdrop-filter: blur(28rpx);
+  animation: panel-pop-in 280ms cubic-bezier(0.18, 0.88, 0.28, 1.08) both;
+}
+
+.invite-title {
+  text-align: center;
+  color: #172335;
+  font-size: 28rpx;
+  font-weight: 850;
+}
+
+.invite-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22rpx;
+  margin-top: 28rpx;
+}
+
+.invite-action {
+  height: 74rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 26rpx;
+  font-size: 38rpx;
+  font-weight: 900;
+}
+
+.invite-action--reject {
+  background: rgba(245, 228, 232, 0.94);
+  color: #9b5264;
+}
+
+.invite-action--accept {
+  background: rgba(203, 231, 215, 0.96);
+  color: #437557;
 }
 
 .team-edit-backdrop {

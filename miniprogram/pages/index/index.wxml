@@ -429,14 +429,24 @@
     <text>{{selectionPreviewText}}</text>
   </view>
 
+  <view class="invite-backdrop" wx:if="{{inviteConfirmEvent}}" bindtap="closeInviteConfirm">
+    <view class="invite-card" catchtap="noop">
+      <view class="invite-title">{{inviteConfirmEvent.title}}({{inviteConfirmEvent.creator}})</view>
+      <view class="invite-actions">
+        <view class="invite-action invite-action--reject" bindtap="rejectInviteEvent">×</view>
+        <view class="invite-action invite-action--accept" bindtap="acceptInviteEvent">✓</view>
+      </view>
+    </view>
+  </view>
+
   <view class="edit-backdrop" wx:if="{{editingEvent}}" bindtap="closeEdit">
     <view class="edit-card" catchtap="noop">
       <text class="edit-heading">编辑事件</text>
       <input class="edit-input" value="{{editTitle}}" focus="true" bindinput="onEditInput" />
       <view class="edit-meta">{{editingEvent.range}} · {{editingEvent.creator}}</view>
       <view class="edit-actions" wx:if="{{editingEvent.eventType === 'pending_team'}}">
-        <button class="delete-button" bindtap="rejectEditingEvent">拒绝</button>
-        <button class="primary-button" bindtap="acceptEditingEvent">接受</button>
+        <button class="delete-button" bindtap="rejectInviteEvent">拒绝</button>
+        <button class="primary-button" bindtap="acceptInviteEvent">接受</button>
       </view>
       <view class="edit-actions" wx:elif="{{editingEvent.eventType === 'team'}}">
         <button class="primary-button" bindtap="closeEdit">关闭</button>

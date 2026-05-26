@@ -736,6 +736,15 @@ app.patch('/teams/:teamId/events/:eventId/gear-requirements', asyncRoute(async (
       );
       if (item.quantity > owned.rows[0].quantity) throw apiError(400, 'quantity exceeds owned gear');
 
+      if (item.quantity === 0) {
+        await client.query(
+          `DELETE FROM event_gear_requirements
+           WHERE event_id = $1 AND participant_user_id = $2 AND gear_type_id = $3`,
+          [eventId, item.participantUserId, item.gearTypeId]
+        );
+        continue;
+      }
+
       await client.query(
         `INSERT INTO event_gear_requirements
            (id, event_id, participant_user_id, gear_type_id, quantity, assigned_by_user_id)

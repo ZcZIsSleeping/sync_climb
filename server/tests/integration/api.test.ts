@@ -276,6 +276,12 @@ describe('team event gear requirements', () => {
 
     await request(app)
       .post('/me/gears')
+      .set('authorization', auth(alice.token))
+      .send({ gearTypeId: 'gear_rope', name: '绳索', quantity: 2 })
+      .expect(201);
+
+    await request(app)
+      .post('/me/gears')
       .set('authorization', auth(bob.token))
       .send({ gearTypeId: 'gear_quickdraw', name: '快挂', quantity: 6 })
       .expect(201);
@@ -310,6 +316,48 @@ describe('team event gear requirements', () => {
       .expect(200);
     expect(assigned.body.gearSummary).toEqual([
       { gearTypeId: 'gear_quickdraw', name: '快挂', iconKey: 'Q', quantity: 3 }
+    ]);
+
+    const detail = await request(app).get(`/teams/${teamId}/events/${eventId}`).set('authorization', auth(alice.token)).expect(200);
+    expect(detail.body.requirements).toEqual([
+      { participantUserId: bob.userId, gearTypeId: 'gear_quickdraw', name: '快挂', iconKey: 'Q', quantity: 3 }
+    ]);
+
+    const merged = await request(app)
+      .patch(`/teams/${teamId}/events/${eventId}/gear-requirements`)
+      .set('authorization', auth(alice.token))
+      .send({
+        requirements: [
+          { participantUserId: bob.userId, gearTypeId: 'gear_quickdraw', quantity: 3 },
+          { participantUserId: alice.userId, gearTypeId: 'gear_rope', quantity: 1 }
+        ]
+      })
+      .expect(200);
+    expect(merged.body.gearSummary).toEqual([
+      { gearTypeId: 'gear_quickdraw', name: '快挂', iconKey: 'Q', quantity: 3 },
+      { gearTypeId: 'gear_rope', name: '绳索', iconKey: 'R', quantity: 1 }
+    ]);
+
+    const afterMerge = await request(app).get(`/teams/${teamId}/events/${eventId}`).set('authorization', auth(alice.token)).expect(200);
+    expect(afterMerge.body.requirements).toEqual([
+      { participantUserId: bob.userId, gearTypeId: 'gear_quickdraw', name: '快挂', iconKey: 'Q', quantity: 3 },
+      { participantUserId: alice.userId, gearTypeId: 'gear_rope', name: '绳索', iconKey: 'R', quantity: 1 }
+    ]);
+
+    await request(app)
+      .patch(`/teams/${teamId}/events/${eventId}/gear-requirements`)
+      .set('authorization', auth(alice.token))
+      .send({
+        requirements: [
+          { participantUserId: bob.userId, gearTypeId: 'gear_quickdraw', quantity: 0 },
+          { participantUserId: alice.userId, gearTypeId: 'gear_rope', quantity: 1 }
+        ]
+      })
+      .expect(200);
+
+    const afterDeleteZero = await request(app).get(`/teams/${teamId}/events/${eventId}`).set('authorization', auth(alice.token)).expect(200);
+    expect(afterDeleteZero.body.requirements).toEqual([
+      { participantUserId: alice.userId, gearTypeId: 'gear_rope', name: '绳索', iconKey: 'R', quantity: 1 }
     ]);
   });
 });

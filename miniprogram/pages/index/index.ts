@@ -50,7 +50,16 @@ type ClimbEvent = {
   color: 'blue' | 'pink' | 'green' | 'violet'
   eventType?: 'personal' | 'pending_team' | 'team' | 'member_personal'
   teamId?: string
+  creatorUserId?: string
   status?: string
+}
+
+type InviteEvent = {
+  id: string
+  title: string
+  creator: string
+  teamId?: string
+  scope: 'calendar' | 'team'
 }
 
 type EventSegment = {
@@ -118,6 +127,12 @@ type MemberGearEditor = {
   member: TeamMember
   expanded: boolean
   allocations: GearItem[]
+}
+
+type EventGearRequirement = {
+  participantUserId: string
+  gearTypeId: string
+  quantity: number
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -331,7 +346,7 @@ function buildWeekSegments(
       id: current.event.id,
       title: current.event.title,
       creator: current.event.creator,
-      color: `event-segment--${current.event.color}`,
+      color: `event-segment--${current.event.color}${current.event.eventType === 'pending_team' || current.event.status === 'pending' || current.event.status === 'rejected' ? ' event-segment--pending' : ''}`,
       label: `${current.event.title}(${current.event.creator})`,
       style: `left:${left}%;width:${width}%;top:${62 + current.row * 30}rpx;border-radius:${radius};`,
     })
@@ -415,6 +430,7 @@ Page({
     expandedEvents: [] as EventPreview[],
     expandedPanelStyle: '',
     editingEvent: null as EventPreview | null,
+    inviteConfirmEvent: null as InviteEvent | null,
     editTitle: '',
     loggedIn: false,
     nickname: '山野同伴',
@@ -449,6 +465,7 @@ Page({
     teamSelectingEnd: '',
     teamEventClosing: false,
     teamDetailEvent: null as TeamCalendarEvent | null,
+    eventGearDirty: false,
     otherEventPreview: null as TeamCalendarEvent | null,
     teamDayPreviewDate: '',
     teamDayPreviewTitle: '',
@@ -993,18 +1010,70 @@ Page({
     this.updateSelectionPreviewFromPoint(x, y, 'td')
   },
 
-  async openTeamEventDetail(found: TeamCalendarEvent) {
-    const teamId = (this.data as { selectedTeamId: string }).selectedTeamId
+  async openTeamEventDetail(found: TeamCalendarEvent, explicitTeamId?: string) {
+    const teamId = explicitTeamId || found.teamId || (this.data as { selectedTeamId: string }).selectedTeamId
     if (!teamId) return
-    const detail = await this.api<{ gearSummary: any[]; participants: Array<{ userId: string }> }>(`/teams/${teamId}/events/${found.id}`)
+    const detail = await this.api<{
+      gearSummary: any[]
+      participants: Array<{ userId: string }>
+      requirements: EventGearRequirement[]
+    }>(`/teams/${teamId}/events/${found.id}`)
     const eventWithGear = {
       ...found,
+      teamId,
       gearSummary: (detail.gearSummary || []).map((item) => this.mapApiGear({ ...item, id: item.gearTypeId, count: item.quantity })),
     }
     this.setData({
       teamDetailEvent: eventWithGear,
-      memberGearEditors: this.buildMemberGearEditors(eventWithGear, detail.participants.map((item) => item.userId)),
+      memberGearEditors: this.buildMemberGearEditors(
+        eventWithGear,
+        detail.participants.map((item) => item.userId),
+        detail.requirements || [],
+      ),
+      eventGearDirty: false,
     })
+  },
+
+  openInviteConfirm(found: ClimbEvent | TeamCalendarEvent, scope: 'calendar' | 'team') {
+    this.setData({
+      inviteConfirmEvent: {
+        id: found.id,
+        title: found.title,
+        creator: found.creator,
+        teamId: found.teamId || (this.data as { selectedTeamId: string }).selectedTeamId,
+        scope,
+      },
+      editingEvent: null,
+      expandedDate: '',
+      teamDayPreviewDate: '',
+    })
+  },
+
+  async openJoinedTeamEventFromCalendar(found: ClimbEvent) {
+    if (!found.teamId) return
+    this.setData({
+      expandedDate: '',
+      expandedEvents: [],
+      editingEvent: null,
+      otherEventPreview: null,
+      teamDayPreviewDate: '',
+    })
+    const members = await this.api<{ members: any[] }>(`/teams/${found.teamId}/members`)
+    const teamMembers = members.members.map((item, index) => ({
+      id: item.id,
+      name: item.id === (this.data as { currentUserId: string }).currentUserId ? '我' : item.name,
+      avatar: item.avatar || item.name.slice(0, 1).toUpperCase(),
+      color: COLORS[index % COLORS.length],
+      gear: (item.gear || []).map((gear: any) => this.mapApiGear(gear)),
+    }))
+    this.setData({ teamMembers, filteredTeamMembers: teamMembers })
+    await this.openTeamEventDetail({
+      ...found,
+      memberId: found.creator,
+      creatorUserId: found.creatorUserId,
+      isTeamEvent: true,
+      gearSummary: [],
+    }, found.teamId)
   },
 
   onTeamEventTap(event: TouchEventLike) {
@@ -1019,6 +1088,10 @@ Page({
       this.setData({ otherEventPreview: found })
       return
     }
+    if (found.status === 'pending' || found.status === 'rejected') {
+      this.openInviteConfirm(found, 'team')
+      return
+    }
     this.openTeamEventDetail(found)
   },
 
@@ -1026,6 +1099,7 @@ Page({
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
     if (!found || !found.isTeamEvent) return
+    if (found.status === 'pending' || found.status === 'rejected') return
     const currentUserId = (this.data as { currentUserId: string }).currentUserId
     if (found.creatorUserId && found.creatorUserId !== currentUserId) {
       return
@@ -1107,6 +1181,10 @@ Page({
       this.setData({ otherEventPreview: found })
       return
     }
+    if (found.status === 'pending' || found.status === 'rejected') {
+      this.openInviteConfirm(found, 'team')
+      return
+    }
     this.openTeamEventDetail(found)
   },
 
@@ -1130,7 +1208,7 @@ Page({
     this.positionExpandedPanel(date)
   },
 
-  onCalendarEventTap(event: TouchEventLike) {
+  async onCalendarEventTap(event: TouchEventLike) {
     if (this.suppressNextEventTap) {
       this.suppressNextEventTap = false
       return
@@ -1138,10 +1216,15 @@ Page({
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
     if (!found) return
-    if (found.eventType && found.eventType !== 'personal') {
-      this.toast('团队日程请在团队页移动')
+    if (found.eventType === 'pending_team') {
+      this.openInviteConfirm(found, 'calendar')
       return
     }
+    if (found.eventType === 'team') {
+      await this.openJoinedTeamEventFromCalendar(found)
+      return
+    }
+    if (found.eventType && found.eventType !== 'personal') return
     this.setData({
       expandedDate: '',
       expandedEvents: [],
@@ -1167,6 +1250,7 @@ Page({
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
     if (!found) return
+    if (found.eventType && found.eventType !== 'personal') return
     wx.vibrateShort({ type: 'light' })
     this.eventDragActive = true
     this.eventDragScope = 'calendar'
@@ -1441,17 +1525,17 @@ Page({
     this.setData({ newGearName: event.detail.value })
   },
 
-  buildMemberGearEditors(event: TeamCalendarEvent, participantIds?: string[]): MemberGearEditor[] {
+  buildMemberGearEditors(event: TeamCalendarEvent, participantIds?: string[], requirements: EventGearRequirement[] = []): MemberGearEditor[] {
     const members = (this.data as { teamMembers: TeamMember[] }).teamMembers
     const visibleMembers = participantIds ? members.filter((member) => participantIds.includes(member.id)) : members
     return visibleMembers.map((member) => ({
       member,
       expanded: false,
       allocations: member.gear.map((gear) => {
-        const current = event.gearSummary.find((item) => item.name === gear.name)
+        const current = requirements.find((item) => item.participantUserId === member.id && item.gearTypeId === gear.gearTypeId)
         return {
           ...gear,
-          count: current ? Math.min(current.count, gear.count) : 0,
+          count: current ? Math.min(current.quantity, gear.count) : 0,
         }
       }),
     }))
@@ -1461,10 +1545,11 @@ Page({
     this.setData({ otherEventPreview: null })
   },
 
-  closeTeamEventDetail() {
+  async closeTeamEventDetail() {
+    await this.submitEventGearIfDirty()
     this.setData({ teamEventClosing: true })
     setTimeout(() => {
-      this.setData({ teamDetailEvent: null, memberGearEditors: [], teamEventClosing: false })
+      this.setData({ teamDetailEvent: null, memberGearEditors: [], teamEventClosing: false, eventGearDirty: false })
     }, 240)
   },
 
@@ -1477,15 +1562,17 @@ Page({
     this.setData({ memberGearEditors: editors })
   },
 
-  async changeEventGear(event: TouchEventLike, delta: number) {
+  changeEventGear(event: TouchEventLike, delta: number) {
     const memberId = String(event.currentTarget.dataset.member || '')
     const gearId = String(event.currentTarget.dataset.gear || '')
     const data = this.data as {
       memberGearEditors: MemberGearEditor[]
       teamDetailEvent: TeamCalendarEvent | null
       teamEvents: TeamCalendarEvent[]
+      currentUserId: string
     }
     if (!data.teamDetailEvent) return
+    if (data.teamDetailEvent.creatorUserId !== data.currentUserId) return
     let blocked = false
     const editors = data.memberGearEditors.map((editor) => {
       if (editor.member.id !== memberId) return editor
@@ -1506,22 +1593,11 @@ Page({
     const gearSummary = this.mergeEventGear(editors)
     const updatedEvent = { ...data.teamDetailEvent, gearSummary }
     const teamEvents = data.teamEvents.map((item) => (item.id === updatedEvent.id ? updatedEvent : item))
-    const teamId = (this.data as { selectedTeamId: string }).selectedTeamId
-    if (teamId) {
-      const requirements = editors.flatMap((editor) => (
-        editor.allocations.map((gear) => ({
-          participantUserId: editor.member.id,
-          gearTypeId: gear.gearTypeId || gear.id,
-          quantity: gear.count,
-        }))
-      ))
-      this.api(`/teams/${teamId}/events/${updatedEvent.id}/gear-requirements`, 'PATCH', { requirements })
-        .catch(() => this.toast('装备分配保存失败'))
-    }
     this.setData({
       memberGearEditors: editors,
       teamDetailEvent: updatedEvent,
       teamEvents,
+      eventGearDirty: true,
     })
   },
 
@@ -1531,6 +1607,31 @@ Page({
 
   increaseEventGear(event: TouchEventLike) {
     this.changeEventGear(event, 1)
+  },
+
+  async submitEventGearIfDirty() {
+    const data = this.data as {
+      eventGearDirty: boolean
+      memberGearEditors: MemberGearEditor[]
+      teamDetailEvent: TeamCalendarEvent | null
+      selectedTeamId: string
+    }
+    if (!data.eventGearDirty || !data.teamDetailEvent) return
+    const teamId = data.teamDetailEvent.teamId || data.selectedTeamId
+    if (!teamId) return
+    const requirements = data.memberGearEditors.flatMap((editor) => (
+      editor.allocations.map((gear) => ({
+        participantUserId: editor.member.id,
+        gearTypeId: gear.gearTypeId || gear.id,
+        quantity: gear.count,
+      }))
+    ))
+    try {
+      await this.api(`/teams/${teamId}/events/${data.teamDetailEvent.id}/gear-requirements`, 'PATCH', { requirements })
+      this.setData({ eventGearDirty: false })
+    } catch (error) {
+      this.toast('装备分配保存失败')
+    }
   },
 
   mergeEventGear(editors: MemberGearEditor[]): GearItem[] {
@@ -1553,13 +1654,14 @@ Page({
     const data = this.data as { teamDetailEvent: TeamCalendarEvent | null; teamEvents: TeamCalendarEvent[] }
     if (!data.teamDetailEvent) return
     wx.vibrateShort({ type: 'light' })
-    const teamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    const teamId = data.teamDetailEvent.teamId || (this.data as { selectedTeamId: string }).selectedTeamId
     if (teamId) await this.api(`/teams/${teamId}/events/${data.teamDetailEvent.id}`, 'DELETE')
     const teamEvents = data.teamEvents.filter((item) => item.id !== data.teamDetailEvent!.id)
     this.setData({
       teamEvents,
       teamDetailEvent: null,
       memberGearEditors: [],
+      eventGearDirty: false,
     }, () => this.refreshTeamMonths())
   },
 
@@ -1660,6 +1762,7 @@ Page({
         teamSelectingEnd: '',
       })
       await this.loadTeamEvents(selectedTeamId)
+      await this.loadCalendarEvents()
       return
     }
     const start = data.createStart
@@ -1694,10 +1797,19 @@ Page({
     })
   },
 
-  onEventTap(event: TouchEventLike) {
+  async onEventTap(event: TouchEventLike) {
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { expandedEvents: EventPreview[] }).expandedEvents).find((item) => item.id === id)
     if (!found) return
+    if (found.eventType === 'pending_team') {
+      this.openInviteConfirm(found, 'calendar')
+      return
+    }
+    if (found.eventType === 'team') {
+      await this.openJoinedTeamEventFromCalendar(found)
+      return
+    }
+    if (found.eventType && found.eventType !== 'personal') return
     this.setData({
       editingEvent: found,
       editTitle: found.title,
@@ -1757,22 +1869,47 @@ Page({
     this.setData({ editingEvent: null, editTitle: '' })
   },
 
-  async acceptEditingEvent() {
-    const editingEvent = (this.data as { editingEvent: EventPreview | null }).editingEvent
-    if (!editingEvent) return
-    await this.api(`/me/events/${editingEvent.id}/accept`, 'POST')
-    this.setData({ editingEvent: null, editTitle: '' })
-    await this.loadCalendarEvents()
-    const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
-    if (selectedTeamId) await this.loadTeamEvents(selectedTeamId)
+  closeInviteConfirm() {
+    this.setData({ inviteConfirmEvent: null })
   },
 
-  async rejectEditingEvent() {
-    const editingEvent = (this.data as { editingEvent: EventPreview | null }).editingEvent
-    if (!editingEvent) return
-    await this.api(`/me/events/${editingEvent.id}/reject`, 'POST')
-    this.setData({ editingEvent: null, editTitle: '' })
+  async acceptInviteEvent() {
+    const invite = (this.data as { inviteConfirmEvent: InviteEvent | null }).inviteConfirmEvent
+    if (!invite) return
+    await this.api(`/me/events/${invite.id}/accept`, 'POST')
+    this.setData({ inviteConfirmEvent: null, editingEvent: null, editTitle: '' })
     await this.loadCalendarEvents()
+    const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    const teamId = invite.teamId || selectedTeamId
+    if (teamId) {
+      if (selectedTeamId !== teamId) {
+        await this.loadTeams()
+        const team = ((this.data as { teams: TeamCard[] }).teams).find((item) => item.id === teamId) || null
+        this.setData({
+          activeTab: 'team',
+          pageTitle: 'Team',
+          selectedTeamId: teamId,
+          selectedTeam: team,
+          teamName: team?.name || '',
+          teamGearExpanded: false,
+        })
+        await this.loadTeamDetailData(teamId)
+      } else {
+        await this.loadTeamEvents(teamId)
+      }
+      const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === invite.id)
+      if (found) await this.openTeamEventDetail(found)
+    }
+  },
+
+  async rejectInviteEvent() {
+    const invite = (this.data as { inviteConfirmEvent: InviteEvent | null }).inviteConfirmEvent
+    if (!invite) return
+    await this.api(`/me/events/${invite.id}/reject`, 'POST')
+    this.setData({ inviteConfirmEvent: null, editingEvent: null, editTitle: '' })
+    await this.loadCalendarEvents()
+    const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    if (invite.teamId && selectedTeamId === invite.teamId) await this.loadTeamEvents(invite.teamId)
   },
 
   noop() {},
