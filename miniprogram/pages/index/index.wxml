@@ -352,12 +352,34 @@
     <view class="team-event-detail {{teamEventClosing ? 'team-event-detail--closing' : ''}}" catchtap="noop">
       <view class="team-event-title">{{teamDetailEvent.title}}({{teamDetailEvent.creator}})</view>
       <view class="event-gear-summary">
-        <view class="event-gear-chip" wx:for="{{teamDetailEvent.gearSummary}}" wx:key="name">
+        <view
+          class="event-gear-chip"
+          wx:for="{{teamDetailEvent.gearSummary}}"
+          wx:key="name"
+          data-geartype="{{item.gearTypeId || item.id}}"
+          bindlongpress="onGearSummaryLongPress"
+          bindtouchend="hideGearSummaryDetail"
+          bindtouchcancel="hideGearSummaryDetail"
+        >
           <view class="event-gear-icon">{{item.icon}}</view>
           <text class="event-gear-name">{{item.name}}</text>
-          <text>{{item.count}}</text>
+          <text>x{{item.count}}</text>
         </view>
         <view wx:if="{{!teamDetailEvent.gearSummary.length}}" class="event-gear-empty">暂无装备</view>
+      </view>
+      <view
+        wx:if="{{gearSummaryDetailVisible}}"
+        class="gear-summary-glass"
+        catchtap="noop"
+        bindtouchend="hideGearSummaryDetail"
+        bindtouchcancel="hideGearSummaryDetail"
+      >
+        <view class="gear-summary-popover" style="{{gearSummaryDetailStyle}}">
+          <view class="gear-summary-detail-row" wx:for="{{gearSummaryDetailItems}}" wx:key="id">
+            <text class="gear-summary-detail-name">{{item.name}}</text>
+            <text class="gear-summary-detail-count">x{{item.count}}</text>
+          </view>
+        </view>
       </view>
       <view class="team-event-delete" bindtap="deleteTeamEvent">删除团队事件</view>
 

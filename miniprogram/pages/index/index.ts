@@ -1,6 +1,8 @@
 type TouchEventLike = {
   currentTarget: { dataset: Record<string, string | boolean | number | undefined> }
   touches: Array<{ clientX: number; clientY: number }>
+  changedTouches?: Array<{ clientX: number; clientY: number }>
+  detail?: { x?: number; y?: number }
 }
 
 type InputEventLike = {
@@ -97,6 +99,7 @@ type GearItem = {
   icon: string
   count: number
   gearTypeId?: string
+  userGearId?: string
 }
 
 type TeamMember = {
@@ -132,7 +135,10 @@ type MemberGearEditor = {
 type EventGearRequirement = {
   participantUserId: string
   gearTypeId: string
+  userGearId: string
   quantity: number
+  name?: string
+  iconKey?: string
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
@@ -176,6 +182,10 @@ const GEAR_TYPE_BY_LABEL: Record<string, string> = {
   机械塞: 'gear_cam',
   绳索: 'gear_rope',
 }
+const GEAR_TYPE_META: Record<string, GearIconOption> = GEAR_ICON_OPTIONS.reduce((acc, item) => {
+  acc[GEAR_TYPE_BY_LABEL[item.label]] = item
+  return acc
+}, {} as Record<string, GearIconOption>)
 
 function dateKey(date: Date): string {
   const y = date.getFullYear()
@@ -471,6 +481,9 @@ Page({
     teamDayPreviewTitle: '',
     teamDayPreviewEvents: [] as TeamCalendarEvent[],
     memberGearEditors: [] as MemberGearEditor[],
+    gearSummaryDetailVisible: false,
+    gearSummaryDetailItems: [] as GearItem[],
+    gearSummaryDetailStyle: '',
     dragGhostVisible: false,
     dragGhostLabel: '',
     dragGhostColor: '',
@@ -543,6 +556,7 @@ Page({
       color: item.type === 'pending_team' ? 'pink' : COLORS[index % COLORS.length],
       eventType: item.type,
       teamId: item.teamId,
+      creatorUserId: item.creatorUserId,
       status: item.status,
     }
   },
@@ -561,11 +575,12 @@ Page({
 
   mapApiGear(item: any): GearItem {
     return {
-      id: item.id,
+      id: item.id || item.userGearId || item.gearTypeId,
       name: item.name,
       icon: item.icon || item.iconKey || 'G',
       count: item.count ?? item.quantity ?? 0,
       gearTypeId: item.gearTypeId,
+      userGearId: item.userGearId || item.id,
     }
   },
 
@@ -1532,7 +1547,10 @@ Page({
       member,
       expanded: false,
       allocations: member.gear.map((gear) => {
-        const current = requirements.find((item) => item.participantUserId === member.id && item.gearTypeId === gear.gearTypeId)
+        const current = requirements.find((item) => (
+          item.participantUserId === member.id
+          && item.userGearId === (gear.userGearId || gear.id)
+        ))
         return {
           ...gear,
           count: current ? Math.min(current.quantity, gear.count) : 0,
@@ -1549,7 +1567,14 @@ Page({
     await this.submitEventGearIfDirty()
     this.setData({ teamEventClosing: true })
     setTimeout(() => {
-      this.setData({ teamDetailEvent: null, memberGearEditors: [], teamEventClosing: false, eventGearDirty: false })
+      this.setData({
+        teamDetailEvent: null,
+        memberGearEditors: [],
+        teamEventClosing: false,
+        eventGearDirty: false,
+        gearSummaryDetailVisible: false,
+        gearSummaryDetailItems: [],
+      })
     }, 240)
   },
 
@@ -1623,6 +1648,7 @@ Page({
       editor.allocations.map((gear) => ({
         participantUserId: editor.member.id,
         gearTypeId: gear.gearTypeId || gear.id,
+        userGearId: gear.userGearId || gear.id,
         quantity: gear.count,
       }))
     ))
@@ -1639,15 +1665,47 @@ Page({
     editors.forEach((editor) => {
       editor.allocations.forEach((gear) => {
         if (gear.count <= 0) return
-        const current = merged.get(gear.name)
+        const gearTypeId = gear.gearTypeId || gear.id
+        const current = merged.get(gearTypeId)
+        const meta = GEAR_TYPE_META[gearTypeId]
         if (current) {
-          merged.set(gear.name, { ...current, count: current.count + gear.count })
+          merged.set(gearTypeId, { ...current, count: current.count + gear.count })
           return
         }
-        merged.set(gear.name, { id: `summary-${gear.name}`, name: gear.name, icon: gear.icon, count: gear.count })
+        merged.set(gearTypeId, {
+          id: gearTypeId,
+          name: meta?.label || gear.name,
+          icon: meta?.icon || gear.icon,
+          count: gear.count,
+          gearTypeId,
+        })
       })
     })
     return Array.from(merged.values())
+  },
+
+  onGearSummaryLongPress(event: TouchEventLike) {
+    const gearTypeId = String(event.currentTarget.dataset.geartype || '')
+    if (!gearTypeId) return
+    wx.vibrateShort({ type: 'light' })
+    const detailItems = ((this.data as { memberGearEditors: MemberGearEditor[] }).memberGearEditors).flatMap((editor) => (
+      editor.allocations
+        .filter((gear) => (gear.gearTypeId || gear.id) === gearTypeId && gear.count > 0)
+        .map((gear) => ({ ...gear, id: `${editor.member.id}-${gear.userGearId || gear.id}` }))
+    ))
+    if (!detailItems.length) return
+    const touch = event.touches?.[0] || event.changedTouches?.[0]
+    const x = touch?.clientX || event.detail?.x || 180
+    const y = touch?.clientY || event.detail?.y || 320
+    this.setData({
+      gearSummaryDetailVisible: true,
+      gearSummaryDetailItems: detailItems,
+      gearSummaryDetailStyle: `left:${x}px;top:${y}px;`,
+    })
+  },
+
+  hideGearSummaryDetail() {
+    this.setData({ gearSummaryDetailVisible: false, gearSummaryDetailItems: [] })
   },
 
   async deleteTeamEvent() {

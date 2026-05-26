@@ -80,11 +80,12 @@ CREATE TABLE IF NOT EXISTS event_gear_requirements (
   event_id TEXT NOT NULL REFERENCES events(id) ON DELETE CASCADE,
   participant_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   gear_type_id TEXT NOT NULL REFERENCES gear_types(id) ON DELETE RESTRICT,
+  user_gear_id TEXT NOT NULL REFERENCES user_gears(id) ON DELETE CASCADE,
   quantity INTEGER NOT NULL CHECK (quantity >= 0),
   assigned_by_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE (event_id, participant_user_id, gear_type_id)
+  UNIQUE (event_id, participant_user_id, user_gear_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_events_dates ON events(start_date, end_date);

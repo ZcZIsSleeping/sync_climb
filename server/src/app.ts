@@ -593,12 +593,16 @@ app.get('/teams/:teamId/events/:eventId', asyncRoute(async (req: AuthedRequest, 
   const requirements = await pool.query(
     `SELECT egr.participant_user_id AS "participantUserId",
             egr.gear_type_id AS "gearTypeId",
-            gt.name,
+            egr.user_gear_id AS "userGearId",
+            ug.name,
+            gt.name AS "typeName",
             gt.icon_key AS "iconKey",
             egr.quantity
      FROM event_gear_requirements egr
      JOIN gear_types gt ON gt.id = egr.gear_type_id
-     WHERE egr.event_id = $1 AND egr.quantity > 0`,
+     JOIN user_gears ug ON ug.id = egr.user_gear_id
+     WHERE egr.event_id = $1 AND egr.quantity > 0
+     ORDER BY egr.created_at ASC`,
     [eventId]
   );
   const summary = await pool.query(
@@ -709,6 +713,7 @@ app.patch('/teams/:teamId/events/:eventId/gear-requirements', asyncRoute(async (
     requirements: z.array(z.object({
       participantUserId: z.string().trim().min(1),
       gearTypeId: z.string().trim().min(1),
+      userGearId: z.string().trim().min(1),
       quantity: z.number().int().min(0)
     }))
   }).parse(req.body);
@@ -729,31 +734,33 @@ app.patch('/teams/:teamId/events/:eventId/gear-requirements', asyncRoute(async (
       if (!participant.rowCount) throw apiError(400, 'participant must be joined');
 
       const owned = await client.query(
-        `SELECT COALESCE(sum(quantity), 0)::int AS quantity
+        `SELECT id, quantity
          FROM user_gears
-         WHERE user_id = $1 AND gear_type_id = $2`,
-        [item.participantUserId, item.gearTypeId]
+         WHERE id = $1 AND user_id = $2 AND gear_type_id = $3`,
+        [item.userGearId, item.participantUserId, item.gearTypeId]
       );
+      if (!owned.rowCount) throw apiError(400, 'owned gear not found');
       if (item.quantity > owned.rows[0].quantity) throw apiError(400, 'quantity exceeds owned gear');
 
       if (item.quantity === 0) {
         await client.query(
           `DELETE FROM event_gear_requirements
-           WHERE event_id = $1 AND participant_user_id = $2 AND gear_type_id = $3`,
-          [eventId, item.participantUserId, item.gearTypeId]
+           WHERE event_id = $1 AND participant_user_id = $2 AND user_gear_id = $3`,
+          [eventId, item.participantUserId, item.userGearId]
         );
         continue;
       }
 
       await client.query(
         `INSERT INTO event_gear_requirements
-           (id, event_id, participant_user_id, gear_type_id, quantity, assigned_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (event_id, participant_user_id, gear_type_id) DO UPDATE
+           (id, event_id, participant_user_id, gear_type_id, user_gear_id, quantity, assigned_by_user_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         ON CONFLICT (event_id, participant_user_id, user_gear_id) DO UPDATE
            SET quantity = EXCLUDED.quantity,
+               gear_type_id = EXCLUDED.gear_type_id,
                assigned_by_user_id = EXCLUDED.assigned_by_user_id,
                updated_at = now()`,
-        [id('egr'), eventId, item.participantUserId, item.gearTypeId, item.quantity, uid]
+        [id('egr'), eventId, item.participantUserId, item.gearTypeId, item.userGearId, item.quantity, uid]
       );
     }
 
