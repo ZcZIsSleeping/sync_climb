@@ -115,22 +115,25 @@
     </view>
   </view>
 
-  <view class="create-sheet" wx:if="{{createVisible}}">
-    <view class="sheet-card">
-      <view class="sheet-copy">
-        <text class="sheet-title">新建攀登日程</text>
-        <text class="sheet-range">{{createRangeText}}</text>
+  <view class="create-backdrop" wx:if="{{createVisible}}" bindtap="cancelCreate">
+    <view class="create-panel" catchtap="noop">
+      <view class="create-header">
+        <view class="create-icon-button" bindtap="cancelCreate">×</view>
+        <view class="create-heading">
+          <text class="create-title">新建攀登日程</text>
+          <text class="create-range">{{createRangeText}}</text>
+        </view>
+        <view class="create-icon-button create-icon-button--submit" bindtap="saveCreatedEvent">✓</view>
       </view>
-      <input
-        class="sheet-input"
-        value="{{createTitle}}"
-        placeholder="输入事件名称"
-        focus="true"
-        bindinput="onCreateInput"
-      />
-      <view class="sheet-actions">
-        <button class="ghost-button" bindtap="cancelCreate">取消</button>
-        <button class="primary-button" bindtap="saveCreatedEvent">创建</button>
+
+      <view class="create-body">
+        <input
+          class="create-input"
+          value="{{createTitle}}"
+          placeholder="输入事件名称"
+          focus="true"
+          bindinput="onCreateInput"
+        />
       </view>
     </view>
   </view>

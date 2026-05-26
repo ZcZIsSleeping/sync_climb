@@ -358,6 +358,7 @@ Page({
   onDayLongPress(event: TouchEventLike) {
     if (event.currentTarget.dataset.blank) return
     const date = String(event.currentTarget.dataset.date || '')
+    wx.vibrateShort({ type: 'light' })
     this.longPressActive = true
     this.touchStartDate = date
     this.touchLastDate = date
