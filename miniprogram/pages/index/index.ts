@@ -123,9 +123,9 @@ type MemberGearEditor = {
 const DAY_MS = 24 * 60 * 60 * 1000
 const MONTH_ROW_HEIGHT_RPX = 1320
 const MONTH_HISTORY_WINDOW = 24
-const INITIAL_MONTH_OFFSET = -MONTH_HISTORY_WINDOW
-const CURRENT_MONTH_INDEX = MONTH_HISTORY_WINDOW
-const INITIAL_MONTH_COUNT = MONTH_HISTORY_WINDOW * 2 + 1
+const INITIAL_RENDER_AROUND = 3
+const INITIAL_MONTH_OFFSET = -INITIAL_RENDER_AROUND
+const INITIAL_MONTH_COUNT = INITIAL_RENDER_AROUND * 2 + 1
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const GEAR_ICON_OPTIONS: GearIconOption[] = [
   { label: '快挂', icon: 'Q' },
@@ -229,9 +229,10 @@ function buildMonths(
   selectingStart: string,
   selectingEnd: string,
   options: BuildMonthOptions = { maxVisibleEvents: 2 },
+  startOffset = INITIAL_MONTH_OFFSET,
 ): CalendarMonth[] {
   const now = new Date()
-  const anchor = new Date(now.getFullYear(), now.getMonth() + INITIAL_MONTH_OFFSET, 1)
+  const anchor = new Date(now.getFullYear(), now.getMonth() + startOffset, 1)
   const months: CalendarMonth[] = []
   for (let i = 0; i < monthCount; i += 1) {
     months.push(buildMonth(addMonths(anchor, i), events, selectingStart, selectingEnd, options))
@@ -399,11 +400,14 @@ Page({
     testAccounts: TEST_ACCOUNTS,
     events: [] as ClimbEvent[],
     monthCount: INITIAL_MONTH_COUNT,
+    monthStartOffset: INITIAL_MONTH_OFFSET,
     scrollEnabled: true,
     selectingStart: '',
     selectingEnd: '',
     createVisible: false,
     createTarget: 'calendar',
+    createStart: '',
+    createEnd: '',
     createRangeText: '',
     createTitle: '',
     expandedDate: '',
@@ -438,6 +442,7 @@ Page({
     teamEvents: [] as TeamCalendarEvent[],
     teamMonths: [] as CalendarMonth[],
     teamMonthCount: INITIAL_MONTH_COUNT,
+    teamMonthStartOffset: INITIAL_MONTH_OFFSET,
     teamCalendarScrollIntoView: '',
     showTeamTodayButton: false,
     teamSelectingStart: '',
@@ -453,6 +458,12 @@ Page({
     dragGhostLabel: '',
     dragGhostColor: '',
     dragGhostStyle: '',
+    dropPreviewVisible: false,
+    dropPreviewStyle: '',
+    dropPreviewText: '',
+    selectionPreviewVisible: false,
+    selectionPreviewStyle: '',
+    selectionPreviewText: '',
   },
 
   longPressActive: false,
@@ -463,6 +474,12 @@ Page({
   eventDragId: '',
   eventDragDuration: 1,
   eventDragLastDate: '',
+  dragCellRects: [] as Rect[],
+  selectionCellRects: [] as Rect[],
+  dragVisualPending: false,
+  pendingDragGhostStyle: '',
+  pendingDropPreviewStyle: '',
+  pendingDropPreviewText: '',
   suppressNextEventTap: false,
 
   onLoad() {
@@ -630,13 +647,14 @@ Page({
     const data = this.data as {
       teamEvents: TeamCalendarEvent[]
       teamMonthCount: number
+      teamMonthStartOffset: number
       teamSelectingStart: string
       teamSelectingEnd: string
       teamOnlyFilter: boolean
     }
     const events = data.teamOnlyFilter ? data.teamEvents.filter((item) => item.isTeamEvent) : data.teamEvents
     this.setData({
-      teamMonths: buildMonths(events, data.teamMonthCount, data.teamSelectingStart, data.teamSelectingEnd, { maxVisibleEvents: 3 }),
+      teamMonths: buildMonths(events, data.teamMonthCount, data.teamSelectingStart, data.teamSelectingEnd, { maxVisibleEvents: 3 }, data.teamMonthStartOffset),
     })
   },
 
@@ -644,24 +662,38 @@ Page({
     const data = this.data as {
       events: ClimbEvent[]
       monthCount: number
+      monthStartOffset: number
       selectingStart: string
       selectingEnd: string
     }
     this.setData({
-      months: buildMonths(data.events, data.monthCount, data.selectingStart, data.selectingEnd),
+      months: buildMonths(data.events, data.monthCount, data.selectingStart, data.selectingEnd, { maxVisibleEvents: 2 }, data.monthStartOffset),
     })
   },
 
   onScrollToLower() {
-    const data = this.data as { monthCount: number }
-    this.setData({ monthCount: data.monthCount + 3 }, () => this.refreshMonths())
+    const data = this.data as { monthCount: number; monthStartOffset: number }
+    const nextEndOffset = data.monthStartOffset + data.monthCount - 1
+    if (nextEndOffset >= MONTH_HISTORY_WINDOW) return
+    this.setData({ monthCount: Math.min(data.monthCount + 3, MONTH_HISTORY_WINDOW - data.monthStartOffset + 1) }, () => this.refreshMonths())
+  },
+
+  onScrollToUpper() {
+    const data = this.data as { monthCount: number; monthStartOffset: number }
+    if (data.monthStartOffset <= -MONTH_HISTORY_WINDOW) return
+    const add = Math.min(3, data.monthStartOffset + MONTH_HISTORY_WINDOW)
+    this.setData({
+      monthStartOffset: data.monthStartOffset - add,
+      monthCount: data.monthCount + add,
+    }, () => this.refreshMonths())
   },
 
   onCalendarScroll(event: ScrollEventLike) {
     const system = wx.getSystemInfoSync()
     const pxPerRpx = system.windowWidth / 750
     const currentIndex = Math.max(0, Math.floor(event.detail.scrollTop / (MONTH_ROW_HEIGHT_RPX * pxPerRpx)))
-    this.setData({ showTodayButton: currentIndex !== CURRENT_MONTH_INDEX })
+    const monthOffset = (this.data as { monthStartOffset: number }).monthStartOffset + currentIndex
+    this.setData({ showTodayButton: monthOffset !== 0 })
   },
 
   scrollToTodayMonth() {
@@ -671,15 +703,28 @@ Page({
   },
 
   onTeamScrollToLower() {
-    const data = this.data as { teamMonthCount: number }
-    this.setData({ teamMonthCount: data.teamMonthCount + 3 }, () => this.refreshTeamMonths())
+    const data = this.data as { teamMonthCount: number; teamMonthStartOffset: number }
+    const nextEndOffset = data.teamMonthStartOffset + data.teamMonthCount - 1
+    if (nextEndOffset >= MONTH_HISTORY_WINDOW) return
+    this.setData({ teamMonthCount: Math.min(data.teamMonthCount + 3, MONTH_HISTORY_WINDOW - data.teamMonthStartOffset + 1) }, () => this.refreshTeamMonths())
+  },
+
+  onTeamScrollToUpper() {
+    const data = this.data as { teamMonthCount: number; teamMonthStartOffset: number }
+    if (data.teamMonthStartOffset <= -MONTH_HISTORY_WINDOW) return
+    const add = Math.min(3, data.teamMonthStartOffset + MONTH_HISTORY_WINDOW)
+    this.setData({
+      teamMonthStartOffset: data.teamMonthStartOffset - add,
+      teamMonthCount: data.teamMonthCount + add,
+    }, () => this.refreshTeamMonths())
   },
 
   onTeamCalendarScroll(event: ScrollEventLike) {
     const system = wx.getSystemInfoSync()
     const pxPerRpx = system.windowWidth / 750
     const currentIndex = Math.max(0, Math.floor(event.detail.scrollTop / (MONTH_ROW_HEIGHT_RPX * pxPerRpx)))
-    this.setData({ showTeamTodayButton: currentIndex !== CURRENT_MONTH_INDEX })
+    const monthOffset = (this.data as { teamMonthStartOffset: number }).teamMonthStartOffset + currentIndex
+    this.setData({ showTeamTodayButton: monthOffset !== 0 })
   },
 
   scrollToTeamTodayMonth() {
@@ -852,12 +897,16 @@ Page({
     this.longPressActive = true
     this.touchStartDate = date
     this.touchLastDate = date
+    this.cacheSelectionCellRects('.day-cell')
     this.setData({
       scrollEnabled: false,
-      selectingStart: date,
-      selectingEnd: date,
+      selectingStart: '',
+      selectingEnd: '',
       expandedDate: '',
-    }, () => this.refreshMonths())
+      selectionPreviewVisible: true,
+      selectionPreviewText: rangeText(date, date),
+      selectionPreviewStyle: this.selectionPreviewStyleFromEvent(event),
+    })
   },
 
   onDayTouchMove(event: TouchEventLike) {
@@ -871,15 +920,19 @@ Page({
     const start = this.touchStartDate < this.touchLastDate ? this.touchStartDate : this.touchLastDate
     const end = this.touchStartDate < this.touchLastDate ? this.touchLastDate : this.touchStartDate
     this.longPressActive = false
+    this.selectionCellRects = []
     this.setData({
       scrollEnabled: true,
-      selectingStart: start,
-      selectingEnd: end,
+      selectingStart: '',
+      selectingEnd: '',
       createVisible: true,
       createTarget: 'calendar',
+      createStart: start,
+      createEnd: end,
       createRangeText: rangeText(start, end),
       createTitle: '',
-    }, () => this.refreshMonths())
+      selectionPreviewVisible: false,
+    })
   },
 
   onTeamDayTouchStart(event: TouchEventLike) {
@@ -896,14 +949,18 @@ Page({
     this.longPressActive = true
     this.touchStartDate = date
     this.touchLastDate = date
+    this.cacheSelectionCellRects('.team-day-cell')
     this.setData({
       scrollEnabled: false,
-      teamSelectingStart: date,
-      teamSelectingEnd: date,
+      teamSelectingStart: '',
+      teamSelectingEnd: '',
       teamDetailEvent: null,
       otherEventPreview: null,
       teamDayPreviewDate: '',
-    }, () => this.refreshTeamMonths())
+      selectionPreviewVisible: true,
+      selectionPreviewText: rangeText(date, date),
+      selectionPreviewStyle: this.selectionPreviewStyleFromEvent(event),
+    })
   },
 
   onTeamDayTouchMove(event: TouchEventLike) {
@@ -917,29 +974,23 @@ Page({
     const start = this.touchStartDate < this.touchLastDate ? this.touchStartDate : this.touchLastDate
     const end = this.touchStartDate < this.touchLastDate ? this.touchLastDate : this.touchStartDate
     this.longPressActive = false
+    this.selectionCellRects = []
     this.setData({
       scrollEnabled: true,
-      teamSelectingStart: start,
-      teamSelectingEnd: end,
+      teamSelectingStart: '',
+      teamSelectingEnd: '',
       createVisible: true,
       createTarget: 'team',
+      createStart: start,
+      createEnd: end,
       createRangeText: rangeText(start, end),
       createTitle: '',
-    }, () => this.refreshTeamMonths())
+      selectionPreviewVisible: false,
+    })
   },
 
   updateTeamSelectionFromPoint(x: number, y: number) {
-    wx.createSelectorQuery()
-      .selectAll('.team-day-cell')
-      .boundingClientRect((rects) => {
-        const match = rects.find((rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
-        if (!match || !match.id) return
-        const date = match.id.replace(/^td/, '')
-        if (date === this.touchLastDate) return
-        this.touchLastDate = date
-        this.setData({ teamSelectingEnd: date }, () => this.refreshTeamMonths())
-      })
-      .exec()
+    this.updateSelectionPreviewFromPoint(x, y, 'td')
   },
 
   async openTeamEventDetail(found: TeamCalendarEvent) {
@@ -977,7 +1028,6 @@ Page({
     if (!found || !found.isTeamEvent) return
     const currentUserId = (this.data as { currentUserId: string }).currentUserId
     if (found.creatorUserId && found.creatorUserId !== currentUserId) {
-      this.toast('只能移动自己创建的团队事件')
       return
     }
     wx.vibrateShort({ type: 'light' })
@@ -986,10 +1036,11 @@ Page({
     this.eventDragId = id
     this.eventDragDuration = durationDays(found)
     this.eventDragLastDate = found.start
+    this.cacheDragCellRects('.team-day-cell')
     this.setData({
       scrollEnabled: false,
-      teamSelectingStart: found.start,
-      teamSelectingEnd: found.end,
+      teamSelectingStart: '',
+      teamSelectingEnd: '',
       teamDetailEvent: null,
       otherEventPreview: null,
       teamDayPreviewDate: '',
@@ -997,13 +1048,16 @@ Page({
       dragGhostLabel: `${found.title}(${found.creator})`,
       dragGhostColor: `event-segment--${found.color}`,
       dragGhostStyle: this.dragGhostStyleFromEvent(event),
-    }, () => this.refreshTeamMonths())
+      dropPreviewVisible: true,
+      dropPreviewText: rangeText(found.start, found.end),
+      dropPreviewStyle: this.dropPreviewStyleFromEvent(event),
+    })
   },
 
   onTeamEventTouchMove(event: TouchEventLike) {
     if (!this.eventDragActive || this.eventDragScope !== 'team') return
     const touch = event.touches[0]
-    this.setData({ dragGhostStyle: this.dragGhostStyle(touch.clientX, touch.clientY) })
+    this.queueDragVisual(touch.clientX, touch.clientY)
     this.updateEventDragFromPoint(touch.clientX, touch.clientY, '.team-day-cell')
   },
 
@@ -1018,12 +1072,12 @@ Page({
       teamSelectingStart: '',
       teamSelectingEnd: '',
       dragGhostVisible: false,
+      dropPreviewVisible: false,
     })
     if (selectedTeamId) {
       try {
         await this.api(`/teams/${selectedTeamId}/events/${id}/move`, 'PATCH', { startDate: target })
       } catch (error) {
-        this.toast('只能移动自己创建的团队事件')
       }
       await this.loadTeamEvents(selectedTeamId)
     }
@@ -1119,23 +1173,27 @@ Page({
     this.eventDragId = id
     this.eventDragDuration = durationDays(found)
     this.eventDragLastDate = found.start
+    this.cacheDragCellRects('.day-cell')
     this.setData({
       scrollEnabled: false,
-      selectingStart: found.start,
-      selectingEnd: found.end,
+      selectingStart: '',
+      selectingEnd: '',
       expandedDate: '',
       editingEvent: null,
       dragGhostVisible: true,
       dragGhostLabel: `${found.title}(${found.creator})`,
       dragGhostColor: `event-segment--${found.color}`,
       dragGhostStyle: this.dragGhostStyleFromEvent(event),
-    }, () => this.refreshMonths())
+      dropPreviewVisible: true,
+      dropPreviewText: rangeText(found.start, found.end),
+      dropPreviewStyle: this.dropPreviewStyleFromEvent(event),
+    })
   },
 
   onCalendarEventTouchMove(event: TouchEventLike) {
     if (!this.eventDragActive || this.eventDragScope !== 'calendar') return
     const touch = event.touches[0]
-    this.setData({ dragGhostStyle: this.dragGhostStyle(touch.clientX, touch.clientY) })
+    this.queueDragVisual(touch.clientX, touch.clientY)
     this.updateEventDragFromPoint(touch.clientX, touch.clientY, '.day-cell')
   },
 
@@ -1152,47 +1210,44 @@ Page({
         selectingStart: '',
         selectingEnd: '',
         dragGhostVisible: false,
-      }, () => this.refreshMonths())
+        dropPreviewVisible: false,
+      })
       this.toast('团队日程请在团队页移动')
       return
     }
-    const events = ((this.data as { events: ClimbEvent[] }).events).map((item) => {
-      if (item.id !== id) return item
-      return {
-        ...item,
-        start: target,
-        end: dateKey(addDays(dateFromKey(target), duration - 1)),
-      }
-    })
     this.resetEventDrag()
-    this.api(`/me/events/${id}/move`, 'PATCH', { startDate: target })
-      .catch(() => this.toast('移动事件失败'))
     this.setData({
-      events,
       scrollEnabled: true,
       selectingStart: '',
       selectingEnd: '',
       dragGhostVisible: false,
-    }, () => this.refreshMonths())
+      dropPreviewVisible: false,
+    })
+    try {
+      await this.api(`/me/events/${id}/move`, 'PATCH', { startDate: target })
+    } catch (error) {
+      this.toast('移动事件失败')
+    }
+    await this.loadCalendarEvents()
   },
 
-  updateEventDragFromPoint(x: number, y: number, selector: string) {
+  cacheDragCellRects(selector: string) {
     wx.createSelectorQuery()
       .selectAll(selector)
       .boundingClientRect((rects) => {
-        const match = rects.find((rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
-        if (!match || !match.id) return
-        const date = match.id.replace(/^td/, '').replace(/^d/, '')
-        if (date === this.eventDragLastDate) return
-        this.eventDragLastDate = date
-        const end = dateKey(addDays(dateFromKey(date), this.eventDragDuration - 1))
-        if (this.eventDragScope === 'calendar') {
-          this.setData({ selectingStart: date, selectingEnd: end }, () => this.refreshMonths())
-          return
-        }
-        this.setData({ teamSelectingStart: date, teamSelectingEnd: end }, () => this.refreshTeamMonths())
+        this.dragCellRects = rects.filter((rect) => rect.id)
       })
       .exec()
+  },
+
+  updateEventDragFromPoint(x: number, y: number, _selector: string) {
+    const match = this.dragCellRects.find((rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
+    if (!match || !match.id) return
+    const date = match.id.replace(/^td/, '').replace(/^d/, '')
+    if (date === this.eventDragLastDate) return
+    this.eventDragLastDate = date
+    this.pendingDropPreviewStyle = this.dropPreviewStyleFromRect(match)
+    this.pendingDropPreviewText = rangeText(date, dateKey(addDays(dateFromKey(date), this.eventDragDuration - 1)))
   },
 
   resetEventDrag() {
@@ -1201,8 +1256,21 @@ Page({
     this.eventDragId = ''
     this.eventDragDuration = 1
     this.eventDragLastDate = ''
+    this.dragCellRects = []
+    this.dragVisualPending = false
+    this.pendingDragGhostStyle = ''
+    this.pendingDropPreviewStyle = ''
+    this.pendingDropPreviewText = ''
     this.suppressNextEventTap = true
-    this.setData({ dragGhostVisible: false, dragGhostLabel: '', dragGhostColor: '', dragGhostStyle: '' })
+    this.setData({
+      dragGhostVisible: false,
+      dragGhostLabel: '',
+      dragGhostColor: '',
+      dragGhostStyle: '',
+      dropPreviewVisible: false,
+      dropPreviewStyle: '',
+      dropPreviewText: '',
+    })
     setTimeout(() => {
       this.suppressNextEventTap = false
     }, 360)
@@ -1218,18 +1286,62 @@ Page({
     return `left:${Math.max(12, x - 92)}px;top:${Math.max(12, y - 18)}px;`
   },
 
-  updateSelectionFromPoint(x: number, y: number) {
+  cacheSelectionCellRects(selector: string) {
     wx.createSelectorQuery()
-      .selectAll('.day-cell')
+      .selectAll(selector)
       .boundingClientRect((rects) => {
-        const match = rects.find((rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
-        if (!match || !match.id) return
-        const date = match.id.replace(/^d/, '')
-        if (date === this.touchLastDate) return
-        this.touchLastDate = date
-        this.setData({ selectingEnd: date }, () => this.refreshMonths())
+        this.selectionCellRects = rects.filter((rect) => rect.id)
       })
       .exec()
+  },
+
+  selectionPreviewStyleFromEvent(event: TouchEventLike): string {
+    const touch = event.touches[0]
+    if (!touch) return ''
+    return `left:${Math.max(12, touch.clientX - 44)}px;top:${Math.max(12, touch.clientY + 24)}px;`
+  },
+
+  updateSelectionPreviewFromPoint(x: number, y: number, prefix: 'd' | 'td') {
+    const match = this.selectionCellRects.find((rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
+    if (!match || !match.id) return
+    const date = match.id.replace(new RegExp(`^${prefix}`), '')
+    if (date === this.touchLastDate) return
+    this.touchLastDate = date
+    const start = this.touchStartDate < this.touchLastDate ? this.touchStartDate : this.touchLastDate
+    const end = this.touchStartDate < this.touchLastDate ? this.touchLastDate : this.touchStartDate
+    this.setData({
+      selectionPreviewStyle: this.dropPreviewStyleFromRect(match),
+      selectionPreviewText: rangeText(start, end),
+    })
+  },
+
+  dropPreviewStyleFromEvent(event: TouchEventLike): string {
+    const touch = event.touches[0]
+    if (!touch) return ''
+    return `left:${Math.max(12, touch.clientX - 44)}px;top:${Math.max(12, touch.clientY + 24)}px;`
+  },
+
+  dropPreviewStyleFromRect(rect: Rect): string {
+    return `left:${rect.left + 4}px;top:${rect.top + 4}px;width:${Math.max(28, rect.width - 8)}px;height:${Math.max(28, rect.height - 8)}px;`
+  },
+
+  queueDragVisual(x: number, y: number) {
+    this.pendingDragGhostStyle = this.dragGhostStyle(x, y)
+    if (!this.dragVisualPending) {
+      this.dragVisualPending = true
+      setTimeout(() => {
+        this.dragVisualPending = false
+        if (!this.eventDragActive) return
+        const data: Record<string, string> = { dragGhostStyle: this.pendingDragGhostStyle }
+        if (this.pendingDropPreviewStyle) data.dropPreviewStyle = this.pendingDropPreviewStyle
+        if (this.pendingDropPreviewText) data.dropPreviewText = this.pendingDropPreviewText
+        this.setData(data)
+      }, 16)
+    }
+  },
+
+  updateSelectionFromPoint(x: number, y: number) {
+    this.updateSelectionPreviewFromPoint(x, y, 'd')
   },
 
   positionExpandedPanel(date: string) {
@@ -1279,6 +1391,8 @@ Page({
       currentUserId: '',
       nickname: '山野同伴',
       events: [],
+      monthStartOffset: INITIAL_MONTH_OFFSET,
+      monthCount: INITIAL_MONTH_COUNT,
       gearItems: [],
       teams: [],
       selectedTeamId: '',
@@ -1287,6 +1401,8 @@ Page({
       teamMembers: [],
       filteredTeamMembers: [],
       teamEvents: [],
+      teamMonthStartOffset: INITIAL_MONTH_OFFSET,
+      teamMonthCount: INITIAL_MONTH_COUNT,
       teamDetailEvent: null,
       otherEventPreview: null,
       teamDayPreviewDate: '',
@@ -1520,14 +1636,16 @@ Page({
       teamSelectingEnd: string
       createTitle: string
       createTarget: string
+      createStart: string
+      createEnd: string
     }
     const title = data.createTitle.trim()
     if (!title) return
     if (data.createTarget === 'team') {
       const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
       if (!selectedTeamId) return
-      const start = data.teamSelectingStart < data.teamSelectingEnd ? data.teamSelectingStart : data.teamSelectingEnd
-      const end = data.teamSelectingStart < data.teamSelectingEnd ? data.teamSelectingEnd : data.teamSelectingStart
+      const start = data.createStart
+      const end = data.createEnd
       const currentUserId = (this.data as { currentUserId: string }).currentUserId
       const participantUserIds = (this.data as { teamMembers: TeamMember[] }).teamMembers
         .map((member) => member.id)
@@ -1536,20 +1654,24 @@ Page({
       this.setData({
         createVisible: false,
         createTitle: '',
+        createStart: '',
+        createEnd: '',
         teamSelectingStart: '',
         teamSelectingEnd: '',
       })
       await this.loadTeamEvents(selectedTeamId)
       return
     }
-    const start = data.selectingStart < data.selectingEnd ? data.selectingStart : data.selectingEnd
-    const end = data.selectingStart < data.selectingEnd ? data.selectingEnd : data.selectingStart
+    const start = data.createStart
+    const end = data.createEnd
     const res = await this.api<{ event: any }>('/me/events', 'POST', { title, startDate: start, endDate: end })
     const next = this.mapApiEvent({ ...res.event, type: 'personal' }, data.events.length)
     this.setData({
       events: [...data.events, next],
       createVisible: false,
       createTitle: '',
+      createStart: '',
+      createEnd: '',
       selectingStart: '',
       selectingEnd: '',
     }, () => this.refreshMonths())
@@ -1559,10 +1681,13 @@ Page({
     this.setData({
       createVisible: false,
       createTitle: '',
+      createStart: '',
+      createEnd: '',
       selectingStart: '',
       selectingEnd: '',
       teamSelectingStart: '',
       teamSelectingEnd: '',
+      selectionPreviewVisible: false,
     }, () => {
       this.refreshMonths()
       this.refreshTeamMonths()

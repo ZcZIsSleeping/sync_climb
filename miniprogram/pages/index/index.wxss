@@ -240,6 +240,35 @@ page {
   font-size: 16rpx;
 }
 
+.drop-preview,
+.selection-preview {
+  position: fixed;
+  z-index: 59;
+  min-width: 76rpx;
+  min-height: 44rpx;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0 8rpx 8rpx;
+  border: 3rpx solid rgba(217, 77, 77, 0.56);
+  border-radius: 18rpx;
+  background: rgba(217, 77, 77, 0.08);
+  color: #9b3d3d;
+  font-size: 16rpx;
+  font-weight: 850;
+  pointer-events: none;
+  backdrop-filter: blur(8rpx);
+  box-shadow: 0 12rpx 30rpx rgba(55, 73, 99, 0.14);
+}
+
+.selection-preview {
+  z-index: 58;
+  border-color: rgba(75, 143, 218, 0.55);
+  background: rgba(75, 143, 218, 0.08);
+  color: #2363a5;
+}
+
 .event-segment--blue {
   background: linear-gradient(90deg, rgba(199, 225, 251, 0.95), rgba(213, 233, 253, 0.78));
 }

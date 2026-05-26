@@ -14,8 +14,10 @@
       scroll-y="{{scrollEnabled}}"
       enhanced="true"
       scroll-into-view="{{calendarScrollIntoView}}"
+      upper-threshold="120"
       lower-threshold="520"
       bindscroll="onCalendarScroll"
+      bindscrolltoupper="onScrollToUpper"
       bindscrolltolower="onScrollToLower"
     >
       <view id="month-{{item.key}}" class="month" wx:for="{{months}}" wx:key="key">
@@ -148,8 +150,10 @@
         scroll-y="{{scrollEnabled}}"
         enhanced="true"
         scroll-into-view="{{teamCalendarScrollIntoView}}"
+        upper-threshold="120"
         lower-threshold="520"
         bindscroll="onTeamCalendarScroll"
+        bindscrolltoupper="onTeamScrollToUpper"
         bindscrolltolower="onTeamScrollToLower"
       >
         <view id="team-month-{{item.key}}" class="month" wx:for="{{teamMonths}}" wx:key="key">
@@ -415,6 +419,14 @@
 
   <view wx:if="{{dragGhostVisible}}" class="drag-ghost {{dragGhostColor}}" style="{{dragGhostStyle}}">
     <text class="segment-title">{{dragGhostLabel}}</text>
+  </view>
+
+  <view wx:if="{{dropPreviewVisible}}" class="drop-preview" style="{{dropPreviewStyle}}">
+    <text>{{dropPreviewText}}</text>
+  </view>
+
+  <view wx:if="{{selectionPreviewVisible}}" class="selection-preview" style="{{selectionPreviewStyle}}">
+    <text>{{selectionPreviewText}}</text>
   </view>
 
   <view class="edit-backdrop" wx:if="{{editingEvent}}" bindtap="closeEdit">
