@@ -1,6 +1,7 @@
 declare const wx: {
   getSystemInfoSync(): { windowHeight: number; windowWidth: number }
   vibrateShort(options?: { type?: 'heavy' | 'medium' | 'light'; success?: () => void; fail?: () => void; complete?: () => void }): void
+  setClipboardData(options: { data: string; success?: () => void; fail?: () => void; complete?: () => void }): void
   createSelectorQuery(): {
     select(selector: string): {
       boundingClientRect(callback: (rect: Rect | null) => void): { exec(): void }

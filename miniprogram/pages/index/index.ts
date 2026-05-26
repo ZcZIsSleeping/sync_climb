@@ -42,10 +42,11 @@ type ClimbEvent = {
   start: string
   end: string
   createdAt: number
-  color: 'blue' | 'pink'
+  color: 'blue' | 'pink' | 'green' | 'violet'
 }
 
 type EventSegment = {
+  key: string
   id: string
   title: string
   creator: string
@@ -58,6 +59,10 @@ type MoreMarker = {
   date: string
   count: number
   style: string
+}
+
+type BuildMonthOptions = {
+  maxVisibleEvents: number
 }
 
 type EventPreview = ClimbEvent & {
@@ -76,6 +81,35 @@ type GearItem = {
   count: number
 }
 
+type TeamMember = {
+  id: string
+  name: string
+  avatar: string
+  color: 'blue' | 'pink' | 'green' | 'violet'
+  gear: GearItem[]
+}
+
+type TeamCard = {
+  id: string
+  avatar: string
+  name: string
+  roomNo: string
+  memberCount: number
+  pinned: boolean
+}
+
+type TeamCalendarEvent = ClimbEvent & {
+  memberId: string
+  isTeamEvent: boolean
+  gearSummary: GearItem[]
+}
+
+type MemberGearEditor = {
+  member: TeamMember
+  expanded: boolean
+  allocations: GearItem[]
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const GEAR_ICON_OPTIONS: GearIconOption[] = [
@@ -83,6 +117,108 @@ const GEAR_ICON_OPTIONS: GearIconOption[] = [
   { label: '主锁', icon: 'L' },
   { label: '机械塞', icon: 'C' },
   { label: '绳索', icon: 'R' },
+]
+const seedTeams: TeamCard[] = [
+  { id: 'team-everest', avatar: 'E', name: '珠峰大本营小队', roomNo: '8848', memberCount: 4, pinned: true },
+  { id: 'team-siguniang', avatar: 'S', name: '四姑娘山周末队', roomNo: '6250', memberCount: 6, pinned: false },
+  { id: 'team-rock', avatar: 'R', name: '城市岩壁训练组', roomNo: '4096', memberCount: 3, pinned: false },
+]
+const seedMembers: TeamMember[] = [
+  {
+    id: 'me',
+    name: '我',
+    avatar: 'S',
+    color: 'blue',
+    gear: [
+      { id: 'me-quickdraw', name: '快挂', icon: 'Q', count: 8 },
+      { id: 'me-locker', name: '主锁', icon: 'L', count: 4 },
+      { id: 'me-rope', name: '绳索', icon: 'R', count: 1 },
+    ],
+  },
+  {
+    id: 'lin',
+    name: '林晨',
+    avatar: 'L',
+    color: 'pink',
+    gear: [
+      { id: 'lin-cam', name: '机械塞', icon: 'C', count: 6 },
+      { id: 'lin-locker', name: '主锁', icon: 'L', count: 3 },
+      { id: 'lin-rope', name: '绳索', icon: 'R', count: 1 },
+    ],
+  },
+  {
+    id: 'zhou',
+    name: '周野',
+    avatar: 'Z',
+    color: 'green',
+    gear: [
+      { id: 'zhou-quickdraw', name: '快挂', icon: 'Q', count: 10 },
+      { id: 'zhou-locker', name: '主锁', icon: 'L', count: 5 },
+    ],
+  },
+  {
+    id: 'alan',
+    name: '阿岚',
+    avatar: 'A',
+    color: 'violet',
+    gear: [
+      { id: 'alan-cam', name: '机械塞', icon: 'C', count: 8 },
+      { id: 'alan-quickdraw', name: '快挂', icon: 'Q', count: 6 },
+    ],
+  },
+]
+const seedTeamEvents: TeamCalendarEvent[] = [
+  {
+    id: 'TEVT-001',
+    title: '高海拔装备测试',
+    creator: '林晨',
+    memberId: 'lin',
+    start: '2025-05-06',
+    end: '2025-05-09',
+    createdAt: 1713300000000,
+    color: 'pink',
+    isTeamEvent: false,
+    gearSummary: [],
+  },
+  {
+    id: 'TEVT-002',
+    title: '绳索系统复训',
+    creator: '周野',
+    memberId: 'zhou',
+    start: '2025-05-08',
+    end: '2025-05-12',
+    createdAt: 1713400000000,
+    color: 'blue',
+    isTeamEvent: false,
+    gearSummary: [],
+  },
+  {
+    id: 'TEVT-003',
+    title: '天气窗口讨论',
+    creator: '阿岚',
+    memberId: 'alan',
+    start: '2025-05-16',
+    end: '2025-05-16',
+    createdAt: 1713500000000,
+    color: 'pink',
+    isTeamEvent: false,
+    gearSummary: [],
+  },
+  {
+    id: 'TEVT-TEAM-001',
+    title: '珠峰营地协同计划',
+    creator: '我',
+    memberId: 'me',
+    start: '2025-05-20',
+    end: '2025-05-23',
+    createdAt: 1713600000000,
+    color: 'blue',
+    isTeamEvent: true,
+    gearSummary: [
+      { id: 'event-quickdraw', name: '快挂', icon: 'Q', count: 4 },
+      { id: 'event-locker', name: '主锁', icon: 'L', count: 2 },
+    ],
+  },
 ]
 const MONTH_NAMES = [
   'January',
@@ -215,16 +351,23 @@ function buildMonths(
   monthCount: number,
   selectingStart: string,
   selectingEnd: string,
+  options: BuildMonthOptions = { maxVisibleEvents: 2 },
 ): CalendarMonth[] {
   const anchor = new Date(2025, 3, 1)
   const months: CalendarMonth[] = []
   for (let i = 0; i < monthCount; i += 1) {
-    months.push(buildMonth(addMonths(anchor, i), events, selectingStart, selectingEnd))
+    months.push(buildMonth(addMonths(anchor, i), events, selectingStart, selectingEnd, options))
   }
   return months
 }
 
-function buildMonth(monthDate: Date, events: ClimbEvent[], selectingStart: string, selectingEnd: string): CalendarMonth {
+function buildMonth(
+  monthDate: Date,
+  events: ClimbEvent[],
+  selectingStart: string,
+  selectingEnd: string,
+  options: BuildMonthOptions,
+): CalendarMonth {
   const monthStart = new Date(monthDate.getFullYear(), monthDate.getMonth(), 1)
   const monthEnd = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0)
   const gridStart = addDays(monthStart, -mondayIndex(monthStart))
@@ -254,8 +397,8 @@ function buildMonth(monthDate: Date, events: ClimbEvent[], selectingStart: strin
 
     weeks.push({
       days,
-      segments: buildWeekSegments(weekStartDate, monthStartKey, monthEndKey, events),
-      moreMarkers: buildWeekMoreMarkers(weekStartDate, monthStartKey, monthEndKey, events),
+      segments: buildWeekSegments(weekStartDate, monthStartKey, monthEndKey, events, options.maxVisibleEvents),
+      moreMarkers: buildWeekMoreMarkers(weekStartDate, monthStartKey, monthEndKey, events, options.maxVisibleEvents),
     })
   }
 
@@ -266,62 +409,98 @@ function buildMonth(monthDate: Date, events: ClimbEvent[], selectingStart: strin
   }
 }
 
-function buildWeekSegments(weekStartDate: Date, monthStart: string, monthEnd: string, events: ClimbEvent[]): EventSegment[] {
+function buildWeekSegments(
+  weekStartDate: Date,
+  monthStart: string,
+  monthEnd: string,
+  events: ClimbEvent[],
+  maxVisibleEvents: number,
+): EventSegment[] {
   const weekStart = dateKey(weekStartDate)
   const weekEnd = dateKey(addDays(weekStartDate, 6))
   const visibleStart = weekStart < monthStart ? monthStart : weekStart
   const visibleEnd = weekEnd > monthEnd ? monthEnd : weekEnd
-  const selectedIds = new Set<string>()
+  const placements: Array<{ event: ClimbEvent; row: number; dayIndex: number; day: string }> = []
 
   for (let i = 0; i < 7; i += 1) {
     const day = dateKey(addDays(weekStartDate, i))
     if (day < visibleStart || day > visibleEnd) continue
     sortedEventsForDate(events, day)
-      .slice(0, 2)
-      .forEach((event) => selectedIds.add(event.id))
+      .slice(0, maxVisibleEvents)
+      .forEach((event, row) => {
+        placements.push({ event, row, dayIndex: i, day })
+      })
   }
 
-  return events
-    .filter((event) => selectedIds.has(event.id) && event.start <= visibleEnd && event.end >= visibleStart)
-    .sort((a, b) => {
-      const byDuration = durationDays(b) - durationDays(a)
-      if (byDuration !== 0) return byDuration
-      return b.createdAt - a.createdAt
-    })
-    .map((event) => {
-      const start = event.start < visibleStart ? visibleStart : event.start
-      const end = event.end > visibleEnd ? visibleEnd : event.end
-      const startOffset = Math.round((dateFromKey(start).getTime() - weekStartDate.getTime()) / DAY_MS)
-      const endOffset = Math.round((dateFromKey(end).getTime() - weekStartDate.getTime()) / DAY_MS)
-      const dayRank = sortedEventsForDate(events, start).findIndex((item) => item.id === event.id)
-      const row = dayRank <= 0 ? 0 : 1
-      const top = 62 + row * 30
-      const first = event.start >= visibleStart
-      const last = event.end <= visibleEnd
-      const radius = `${first ? '999rpx' : '6rpx'} ${last ? '999rpx' : '6rpx'} ${last ? '999rpx' : '6rpx'} ${first ? '999rpx' : '6rpx'}`
+  const segments: EventSegment[] = []
+  const sortedPlacements = placements.sort((a, b) => {
+    if (a.event.id !== b.event.id) return a.event.id.localeCompare(b.event.id)
+    if (a.row !== b.row) return a.row - b.row
+    return a.dayIndex - b.dayIndex
+  })
+  let current: { event: ClimbEvent; row: number; startIndex: number; endIndex: number; startDay: string; endDay: string } | null = null
 
-      return {
-        id: event.id,
-        title: event.title,
-        creator: event.creator,
-        color: event.color === 'pink' ? 'event-segment--pink' : 'event-segment--blue',
-        label: `${event.title}(${event.creator})`,
-        style: `left:${startOffset * (100 / 7) + 0.6}%;width:${(endOffset - startOffset + 1) * (100 / 7) - 1.2}%;top:${top}rpx;border-radius:${radius};`,
-      }
+  const flush = () => {
+    if (!current) return
+    const first = current.event.start === current.startDay || current.startDay === visibleStart
+    const last = current.event.end === current.endDay || current.endDay === visibleEnd
+    const radius = `${first ? '999rpx' : '6rpx'} ${last ? '999rpx' : '6rpx'} ${last ? '999rpx' : '6rpx'} ${first ? '999rpx' : '6rpx'}`
+    const left = current.startIndex * (100 / 7) + 0.6
+    const width = (current.endIndex - current.startIndex + 1) * (100 / 7) - 1.2
+    segments.push({
+      key: `${current.event.id}-${current.row}-${current.startIndex}-${current.endIndex}`,
+      id: current.event.id,
+      title: current.event.title,
+      creator: current.event.creator,
+      color: `event-segment--${current.event.color}`,
+      label: `${current.event.title}(${current.event.creator})`,
+      style: `left:${left}%;width:${width}%;top:${62 + current.row * 30}rpx;border-radius:${radius};`,
     })
+  }
+
+  sortedPlacements.forEach((placement) => {
+    if (
+      current &&
+      current.event.id === placement.event.id &&
+      current.row === placement.row &&
+      current.endIndex + 1 === placement.dayIndex
+    ) {
+      current.endIndex = placement.dayIndex
+      current.endDay = placement.day
+      return
+    }
+    flush()
+    current = {
+      event: placement.event,
+      row: placement.row,
+      startIndex: placement.dayIndex,
+      endIndex: placement.dayIndex,
+      startDay: placement.day,
+      endDay: placement.day,
+    }
+  })
+  flush()
+
+  return segments
 }
 
-function buildWeekMoreMarkers(weekStartDate: Date, monthStart: string, monthEnd: string, events: ClimbEvent[]): MoreMarker[] {
+function buildWeekMoreMarkers(
+  weekStartDate: Date,
+  monthStart: string,
+  monthEnd: string,
+  events: ClimbEvent[],
+  maxVisibleEvents: number,
+): MoreMarker[] {
   const markers: MoreMarker[] = []
   for (let i = 0; i < 7; i += 1) {
     const day = dateKey(addDays(weekStartDate, i))
     if (day < monthStart || day > monthEnd) continue
     const count = sortedEventsForDate(events, day).length
-    if (count <= 2) continue
+    if (count <= maxVisibleEvents) continue
     markers.push({
       date: day,
-      count: count - 2,
-      style: `left:${i * (100 / 7) + 0.6}%;width:${100 / 7 - 1.2}%;top:122rpx;`,
+      count: count - maxVisibleEvents,
+      style: `left:${i * (100 / 7) + 0.6}%;width:${100 / 7 - 1.2}%;top:${62 + maxVisibleEvents * 30}rpx;`,
     })
   }
   return markers
@@ -339,6 +518,7 @@ Page({
     selectingStart: '',
     selectingEnd: '',
     createVisible: false,
+    createTarget: 'calendar',
     createRangeText: '',
     createTitle: '',
     expandedDate: '',
@@ -360,6 +540,28 @@ Page({
       { id: 'gear-locker', name: '主锁', icon: 'L', count: 4 },
       { id: 'gear-rope', name: '绳索', icon: 'R', count: 1 },
     ] as GearItem[],
+    teams: seedTeams as TeamCard[],
+    selectedTeamId: '',
+    selectedTeam: null as TeamCard | null,
+    teamName: '',
+    teamMembers: seedMembers as TeamMember[],
+    filteredTeamMembers: seedMembers as TeamMember[],
+    teamSearchId: '',
+    teamGearExpanded: false,
+    teamGearClosing: false,
+    teamOnlyFilter: false,
+    teamEvents: seedTeamEvents as TeamCalendarEvent[],
+    teamMonths: [] as CalendarMonth[],
+    teamMonthCount: 4,
+    teamSelectingStart: '',
+    teamSelectingEnd: '',
+    teamEventClosing: false,
+    teamDetailEvent: null as TeamCalendarEvent | null,
+    otherEventPreview: null as TeamCalendarEvent | null,
+    teamDayPreviewDate: '',
+    teamDayPreviewTitle: '',
+    teamDayPreviewEvents: [] as TeamCalendarEvent[],
+    memberGearEditors: [] as MemberGearEditor[],
   },
 
   longPressActive: false,
@@ -368,6 +570,7 @@ Page({
 
   onLoad() {
     this.refreshMonths()
+    this.refreshTeamMonths()
   },
 
   switchTab(event: TouchEventLike) {
@@ -386,6 +589,20 @@ Page({
     })
   },
 
+  refreshTeamMonths() {
+    const data = this.data as {
+      teamEvents: TeamCalendarEvent[]
+      teamMonthCount: number
+      teamSelectingStart: string
+      teamSelectingEnd: string
+      teamOnlyFilter: boolean
+    }
+    const events = data.teamOnlyFilter ? data.teamEvents.filter((item) => item.isTeamEvent) : data.teamEvents
+    this.setData({
+      teamMonths: buildMonths(events, data.teamMonthCount, data.teamSelectingStart, data.teamSelectingEnd, { maxVisibleEvents: 3 }),
+    })
+  },
+
   refreshMonths() {
     const data = this.data as {
       events: ClimbEvent[]
@@ -401,6 +618,98 @@ Page({
   onScrollToLower() {
     const data = this.data as { monthCount: number }
     this.setData({ monthCount: data.monthCount + 3 }, () => this.refreshMonths())
+  },
+
+  onTeamScrollToLower() {
+    const data = this.data as { teamMonthCount: number }
+    this.setData({ teamMonthCount: data.teamMonthCount + 3 }, () => this.refreshTeamMonths())
+  },
+
+  enterTeam(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    const team = ((this.data as { teams: TeamCard[] }).teams).find((item) => item.id === id)
+    if (!team) return
+    this.setData({
+      selectedTeamId: id,
+      selectedTeam: team,
+      teamName: team.name,
+      pageTitle: 'Team',
+      teamGearExpanded: false,
+      otherEventPreview: null,
+      teamDayPreviewDate: '',
+      teamDetailEvent: null,
+    }, () => this.refreshTeamMonths())
+  },
+
+  backToTeamList() {
+    this.setData({
+      selectedTeamId: '',
+      selectedTeam: null,
+      teamName: '',
+      teamGearExpanded: false,
+      otherEventPreview: null,
+      teamDayPreviewDate: '',
+      teamDetailEvent: null,
+    })
+  },
+
+  pinTeam(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    wx.vibrateShort({ type: 'light' })
+    const teams = ((this.data as { teams: TeamCard[] }).teams).map((item) => {
+      if (item.id !== id) return item
+      return { ...item, pinned: !item.pinned }
+    }).sort((a, b) => Number(b.pinned) - Number(a.pinned))
+    this.setData({ teams })
+  },
+
+  exitTeam(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    wx.vibrateShort({ type: 'light' })
+    const teams = ((this.data as { teams: TeamCard[] }).teams).filter((item) => item.id !== id)
+    this.setData({ teams })
+  },
+
+  onTeamNameInput(event: InputEventLike) {
+    const teamName = event.detail.value
+    const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    const teams = ((this.data as { teams: TeamCard[] }).teams).map((item) => (
+      item.id === selectedTeamId ? { ...item, name: teamName } : item
+    ))
+    this.setData({ teamName, teams })
+  },
+
+  copyRoomNo() {
+    const team = (this.data as { selectedTeam: TeamCard | null }).selectedTeam
+    if (!team) return
+    wx.setClipboardData({ data: team.roomNo })
+    wx.vibrateShort({ type: 'light' })
+  },
+
+  toggleTeamFilter() {
+    const next = !(this.data as { teamOnlyFilter: boolean }).teamOnlyFilter
+    this.setData({ teamOnlyFilter: next }, () => this.refreshTeamMonths())
+  },
+
+  toggleTeamGearPanel() {
+    const data = this.data as { teamGearExpanded: boolean }
+    if (!data.teamGearExpanded) {
+      this.setData({ teamGearExpanded: true, teamGearClosing: false })
+      return
+    }
+    this.setData({ teamGearClosing: true })
+    setTimeout(() => {
+      this.setData({ teamGearExpanded: false, teamGearClosing: false })
+    }, 240)
+  },
+
+  onTeamSearchInput(event: InputEventLike) {
+    const teamSearchId = event.detail.value
+    const members = (this.data as { teamMembers: TeamMember[] }).teamMembers
+    const filteredTeamMembers = teamSearchId.trim()
+      ? members.filter((item) => item.id.includes(teamSearchId.trim()) || item.name.includes(teamSearchId.trim()))
+      : members
+    this.setData({ teamSearchId, filteredTeamMembers })
   },
 
   onDayTouchStart(event: TouchEventLike) {
@@ -441,13 +750,149 @@ Page({
       selectingStart: start,
       selectingEnd: end,
       createVisible: true,
+      createTarget: 'calendar',
       createRangeText: rangeText(start, end),
       createTitle: '',
     }, () => this.refreshMonths())
   },
 
+  onTeamDayTouchStart(event: TouchEventLike) {
+    if (event.currentTarget.dataset.blank) return
+    const date = String(event.currentTarget.dataset.date || '')
+    this.touchStartDate = date
+    this.touchLastDate = date
+  },
+
+  onTeamDayLongPress(event: TouchEventLike) {
+    if (event.currentTarget.dataset.blank) return
+    const date = String(event.currentTarget.dataset.date || '')
+    wx.vibrateShort({ type: 'light' })
+    this.longPressActive = true
+    this.touchStartDate = date
+    this.touchLastDate = date
+    this.setData({
+      scrollEnabled: false,
+      teamSelectingStart: date,
+      teamSelectingEnd: date,
+      teamDetailEvent: null,
+      otherEventPreview: null,
+      teamDayPreviewDate: '',
+    }, () => this.refreshTeamMonths())
+  },
+
+  onTeamDayTouchMove(event: TouchEventLike) {
+    if (!this.longPressActive) return
+    const touch = event.touches[0]
+    this.updateTeamSelectionFromPoint(touch.clientX, touch.clientY)
+  },
+
+  onTeamDayTouchEnd() {
+    if (!this.longPressActive) return
+    const start = this.touchStartDate < this.touchLastDate ? this.touchStartDate : this.touchLastDate
+    const end = this.touchStartDate < this.touchLastDate ? this.touchLastDate : this.touchStartDate
+    this.longPressActive = false
+    this.setData({
+      scrollEnabled: true,
+      teamSelectingStart: start,
+      teamSelectingEnd: end,
+      createVisible: true,
+      createTarget: 'team',
+      createRangeText: rangeText(start, end),
+      createTitle: '',
+    }, () => this.refreshTeamMonths())
+  },
+
+  updateTeamSelectionFromPoint(x: number, y: number) {
+    wx.createSelectorQuery()
+      .selectAll('.team-day-cell')
+      .boundingClientRect((rects) => {
+        const match = rects.find((rect) => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
+        if (!match || !match.id) return
+        const date = match.id.replace(/^td/, '')
+        if (date === this.touchLastDate) return
+        this.touchLastDate = date
+        this.setData({ teamSelectingEnd: date }, () => this.refreshTeamMonths())
+      })
+      .exec()
+  },
+
+  onTeamEventTap(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
+    if (!found) return
+    if (!found.isTeamEvent) {
+      this.setData({ otherEventPreview: found })
+      return
+    }
+    this.setData({
+      teamDetailEvent: found,
+      memberGearEditors: this.buildMemberGearEditors(found),
+    })
+  },
+
+  onTeamMoreTap(event: TouchEventLike) {
+    const date = String(event.currentTarget.dataset.date || '')
+    const events = this.getVisibleTeamEventsForDate(date)
+    if (!events.length) return
+    this.setData({
+      teamDayPreviewDate: date,
+      teamDayPreviewTitle: this.formatDateTitle(date),
+      teamDayPreviewEvents: events,
+    })
+  },
+
+  closeTeamDayPreview() {
+    this.setData({ teamDayPreviewDate: '', teamDayPreviewEvents: [] })
+  },
+
+  onTeamPreviewEventTap(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
+    if (!found) return
+    this.setData({ teamDayPreviewDate: '', teamDayPreviewEvents: [] })
+    if (!found.isTeamEvent) {
+      this.setData({ otherEventPreview: found })
+      return
+    }
+    this.setData({
+      teamDetailEvent: found,
+      memberGearEditors: this.buildMemberGearEditors(found),
+    })
+  },
+
+  getVisibleTeamEventsForDate(date: string): TeamCalendarEvent[] {
+    const data = this.data as { teamEvents: TeamCalendarEvent[]; teamOnlyFilter: boolean }
+    const events = data.teamOnlyFilter ? data.teamEvents.filter((item) => item.isTeamEvent) : data.teamEvents
+    return sortedEventsForDate(events, date) as TeamCalendarEvent[]
+  },
+
   onDayTap(event: TouchEventLike) {
     if (event.currentTarget.dataset.blank || this.longPressActive) return
+    const date = String(event.currentTarget.dataset.date || '')
+    const dayEvents = sortedEventsForDate((this.data as { events: ClimbEvent[] }).events, date)
+    if (dayEvents.length === 0) return
+    this.setData({
+      expandedDate: date,
+      expandedTitle: this.formatDateTitle(date),
+      expandedEvents: dayEvents.map((item) => ({ ...item, range: rangeText(item.start, item.end) })),
+      createVisible: false,
+    })
+    this.positionExpandedPanel(date)
+  },
+
+  onCalendarEventTap(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    const found = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
+    if (!found) return
+    this.setData({
+      expandedDate: '',
+      expandedEvents: [],
+      editingEvent: { ...found, range: rangeText(found.start, found.end) },
+      editTitle: found.title,
+    })
+  },
+
+  onCalendarMoreTap(event: TouchEventLike) {
     const date = String(event.currentTarget.dataset.date || '')
     const dayEvents = sortedEventsForDate((this.data as { events: ClimbEvent[] }).events, date)
     if (dayEvents.length === 0) return
@@ -514,6 +959,113 @@ Page({
     this.setData({ newGearName: event.detail.value })
   },
 
+  buildMemberGearEditors(event: TeamCalendarEvent): MemberGearEditor[] {
+    const members = (this.data as { teamMembers: TeamMember[] }).teamMembers
+    return members.map((member) => ({
+      member,
+      expanded: false,
+      allocations: member.gear.map((gear) => {
+        const current = event.gearSummary.find((item) => item.name === gear.name)
+        return {
+          ...gear,
+          count: current ? Math.min(current.count, gear.count) : 0,
+        }
+      }),
+    }))
+  },
+
+  closeOtherEventPreview() {
+    this.setData({ otherEventPreview: null })
+  },
+
+  closeTeamEventDetail() {
+    this.setData({ teamEventClosing: true })
+    setTimeout(() => {
+      this.setData({ teamDetailEvent: null, memberGearEditors: [], teamEventClosing: false })
+    }, 240)
+  },
+
+  toggleMemberGear(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    const editors = ((this.data as { memberGearEditors: MemberGearEditor[] }).memberGearEditors).map((item) => {
+      if (item.member.id !== id) return item
+      return { ...item, expanded: !item.expanded }
+    })
+    this.setData({ memberGearEditors: editors })
+  },
+
+  changeEventGear(event: TouchEventLike, delta: number) {
+    const memberId = String(event.currentTarget.dataset.member || '')
+    const gearId = String(event.currentTarget.dataset.gear || '')
+    const data = this.data as {
+      memberGearEditors: MemberGearEditor[]
+      teamDetailEvent: TeamCalendarEvent | null
+      teamEvents: TeamCalendarEvent[]
+    }
+    if (!data.teamDetailEvent) return
+    let blocked = false
+    const editors = data.memberGearEditors.map((editor) => {
+      if (editor.member.id !== memberId) return editor
+      const allocations = editor.allocations.map((gear) => {
+        if (gear.id !== gearId) return gear
+        const owned = editor.member.gear.find((item) => item.id === gearId)?.count || 0
+        const next = gear.count + delta
+        if (next < 0 || next > owned) {
+          blocked = true
+          return gear
+        }
+        return { ...gear, count: next }
+      })
+      return { ...editor, allocations }
+    })
+    wx.vibrateShort({ type: blocked ? 'heavy' : 'light' })
+    if (blocked) return
+    const gearSummary = this.mergeEventGear(editors)
+    const updatedEvent = { ...data.teamDetailEvent, gearSummary }
+    const teamEvents = data.teamEvents.map((item) => (item.id === updatedEvent.id ? updatedEvent : item))
+    this.setData({
+      memberGearEditors: editors,
+      teamDetailEvent: updatedEvent,
+      teamEvents,
+    })
+  },
+
+  decreaseEventGear(event: TouchEventLike) {
+    this.changeEventGear(event, -1)
+  },
+
+  increaseEventGear(event: TouchEventLike) {
+    this.changeEventGear(event, 1)
+  },
+
+  mergeEventGear(editors: MemberGearEditor[]): GearItem[] {
+    const merged = new Map<string, GearItem>()
+    editors.forEach((editor) => {
+      editor.allocations.forEach((gear) => {
+        if (gear.count <= 0) return
+        const current = merged.get(gear.name)
+        if (current) {
+          merged.set(gear.name, { ...current, count: current.count + gear.count })
+          return
+        }
+        merged.set(gear.name, { id: `summary-${gear.name}`, name: gear.name, icon: gear.icon, count: gear.count })
+      })
+    })
+    return Array.from(merged.values())
+  },
+
+  deleteTeamEvent() {
+    const data = this.data as { teamDetailEvent: TeamCalendarEvent | null; teamEvents: TeamCalendarEvent[] }
+    if (!data.teamDetailEvent) return
+    wx.vibrateShort({ type: 'light' })
+    const teamEvents = data.teamEvents.filter((item) => item.id !== data.teamDetailEvent!.id)
+    this.setData({
+      teamEvents,
+      teamDetailEvent: null,
+      memberGearEditors: [],
+    }, () => this.refreshTeamMonths())
+  },
+
   addGear() {
     const data = this.data as {
       gearItems: GearItem[]
@@ -570,12 +1122,40 @@ Page({
   saveCreatedEvent() {
     const data = this.data as {
       events: ClimbEvent[]
+      teamEvents: TeamCalendarEvent[]
       selectingStart: string
       selectingEnd: string
+      teamSelectingStart: string
+      teamSelectingEnd: string
       createTitle: string
+      createTarget: string
     }
     const title = data.createTitle.trim()
     if (!title) return
+    if (data.createTarget === 'team') {
+      const start = data.teamSelectingStart < data.teamSelectingEnd ? data.teamSelectingStart : data.teamSelectingEnd
+      const end = data.teamSelectingStart < data.teamSelectingEnd ? data.teamSelectingEnd : data.teamSelectingStart
+      const next: TeamCalendarEvent = {
+        id: `TEVT-${Date.now()}`,
+        title,
+        creator: '我',
+        memberId: 'me',
+        start,
+        end,
+        createdAt: Date.now(),
+        color: 'blue',
+        isTeamEvent: true,
+        gearSummary: [],
+      }
+      this.setData({
+        teamEvents: [...data.teamEvents, next],
+        createVisible: false,
+        createTitle: '',
+        teamSelectingStart: '',
+        teamSelectingEnd: '',
+      }, () => this.refreshTeamMonths())
+      return
+    }
     const start = data.selectingStart < data.selectingEnd ? data.selectingStart : data.selectingEnd
     const end = data.selectingStart < data.selectingEnd ? data.selectingEnd : data.selectingStart
     const next: ClimbEvent = {
@@ -602,7 +1182,12 @@ Page({
       createTitle: '',
       selectingStart: '',
       selectingEnd: '',
-    }, () => this.refreshMonths())
+      teamSelectingStart: '',
+      teamSelectingEnd: '',
+    }, () => {
+      this.refreshMonths()
+      this.refreshTeamMonths()
+    })
   },
 
   onEventTap(event: TouchEventLike) {

@@ -43,13 +43,15 @@
               </view>
             </view>
 
-            <view class="event-layer">
+            <view class="event-layer calendar-event-layer">
               <view
                 wx:for="{{week.segments}}"
                 wx:for-item="segment"
-                wx:key="id"
+                wx:key="key"
                 class="event-segment {{segment.color}}"
                 style="{{segment.style}}"
+                data-id="{{segment.id}}"
+                bindtap="onCalendarEventTap"
               >
                 <text class="segment-title">{{segment.label}}</text>
               </view>
@@ -57,8 +59,10 @@
                 wx:for="{{week.moreMarkers}}"
                 wx:for-item="marker"
                 wx:key="date"
-                class="more-marker"
+                class="more-marker calendar-more-marker"
                 style="{{marker.style}}"
+                data-date="{{marker.date}}"
+                bindtap="onCalendarMoreTap"
               >
                 <text>+{{marker.count}}</text>
               </view>
@@ -69,17 +73,121 @@
       <view class="scroll-spacer"></view>
     </scroll-view>
 
-    <view wx:if="{{activeTab === 'team'}}" class="placeholder-view">
-      <view class="placeholder-icon">
-        <view class="team-icon">
-          <view class="team-head team-head--left"></view>
-          <view class="team-head team-head--right"></view>
-          <view class="team-body team-body--left"></view>
-          <view class="team-body team-body--right"></view>
+    <scroll-view wx:if="{{activeTab === 'team' && !selectedTeamId}}" class="team-scroll" scroll-y="true" enhanced="true">
+      <view class="team-list">
+        <view class="team-card" wx:for="{{teams}}" wx:key="id" data-id="{{item.id}}" bindtap="enterTeam">
+          <view class="team-avatar">{{item.avatar}}</view>
+          <view class="team-card-copy">
+            <text class="team-card-title">{{item.name}}</text>
+            <text class="team-card-count">{{item.memberCount}} 人</text>
+          </view>
+          <view class="team-card-actions">
+            <view class="team-pin-button {{item.pinned ? 'team-pin-button--active' : ''}}" data-id="{{item.id}}" catchtap="pinTeam">↑</view>
+            <view class="team-exit-button" data-id="{{item.id}}" catchtap="exitTeam">×</view>
+          </view>
         </view>
       </view>
-      <text class="placeholder-title">Team</text>
-      <text class="placeholder-text">团队同步稍后接入</text>
+    </scroll-view>
+
+    <view wx:if="{{activeTab === 'team' && selectedTeamId}}" class="team-detail">
+      <view wx:if="{{!teamGearExpanded}}" class="team-detail-head">
+        <view class="team-title-row">
+          <input class="team-name-input" value="{{teamName}}" bindinput="onTeamNameInput" />
+          <view class="room-copy" bindtap="copyRoomNo">
+            <text>#{{selectedTeam.roomNo}}</text>
+            <text class="room-copy-icon">⧉</text>
+          </view>
+          <view class="team-filter {{teamOnlyFilter ? 'team-filter--active' : ''}}" bindtap="toggleTeamFilter">只显示本 Team 活动</view>
+        </view>
+        <view class="team-sub-actions">
+          <view class="team-back-button" bindtap="backToTeamList">返回团队列表</view>
+        </view>
+        <view class="gear-pull-tab" bindtap="toggleTeamGearPanel">
+          <text>Gear</text>
+        </view>
+      </view>
+
+      <view wx:if="{{teamGearExpanded || teamGearClosing}}" class="team-gear-panel team-gear-panel--expanded {{teamGearClosing ? 'team-gear-panel--closing' : ''}}">
+        <view class="team-gear-panel-head">
+          <text class="section-title">团队装备</text>
+        </view>
+        <input class="member-search" value="{{teamSearchId}}" placeholder="按成员 id / 昵称筛选" bindinput="onTeamSearchInput" />
+        <scroll-view class="member-gear-scroll" scroll-x="true" enhanced="true">
+          <view class="member-gear-track">
+            <view class="member-gear-column" wx:for="{{filteredTeamMembers}}" wx:key="id">
+              <view class="member-column-head">
+                <view class="member-avatar member-avatar--{{item.color}}">{{item.avatar}}</view>
+                <text class="member-name">{{item.name}}</text>
+              </view>
+              <scroll-view class="member-column-list" scroll-y="true" enhanced="true">
+                <view class="member-gear-row" wx:for="{{item.gear}}" wx:for-item="gear" wx:key="id">
+                  <view class="gear-card-icon">{{gear.icon}}</view>
+                  <text class="member-gear-name">{{gear.name}}</text>
+                  <text class="member-gear-count">×{{gear.count}}</text>
+                </view>
+              </scroll-view>
+            </view>
+          </view>
+        </scroll-view>
+        <view class="gear-pull-tab gear-pull-tab--panel-bottom" bindtap="toggleTeamGearPanel">
+          <text>Gear</text>
+        </view>
+      </view>
+
+      <scroll-view class="team-calendar-scroll" scroll-y="{{scrollEnabled}}" enhanced="true" lower-threshold="520" bindscrolltolower="onTeamScrollToLower">
+        <view class="month" wx:for="{{teamMonths}}" wx:key="key">
+          <view class="month-title">{{item.title}}</view>
+          <view class="weekday-row">
+            <text class="weekday" wx:for="{{weekdays}}" wx:key="*this">{{item}}</text>
+          </view>
+          <view class="month-grid">
+            <view class="week-row" wx:for="{{item.weeks}}" wx:for-item="week" wx:for-index="weekIndex" wx:key="weekIndex">
+              <view class="days-layer">
+                <view
+                  wx:for="{{week.days}}"
+                  wx:for-item="day"
+                  wx:key="date"
+                  id="td{{day.date}}"
+                  class="day-cell team-day-cell {{day.isBlank ? 'day-cell--blank' : ''}} {{day.isSelecting ? 'day-cell--selecting' : ''}}"
+                  data-date="{{day.date}}"
+                  data-blank="{{day.isBlank}}"
+                  bindtouchstart="onTeamDayTouchStart"
+                  bindlongpress="onTeamDayLongPress"
+                  bindtouchmove="onTeamDayTouchMove"
+                  bindtouchend="onTeamDayTouchEnd"
+                >
+                  <text wx:if="{{!day.isBlank}}" class="day-number {{day.isToday ? 'day-number--today' : ''}}">{{day.day}}</text>
+                </view>
+              </view>
+              <view class="event-layer team-event-layer">
+                <view
+                  wx:for="{{week.segments}}"
+                  wx:for-item="segment"
+                  wx:key="key"
+                  class="event-segment {{segment.color}}"
+                  style="{{segment.style}}"
+                  data-id="{{segment.id}}"
+                  bindtap="onTeamEventTap"
+                >
+                  <text class="segment-title">{{segment.label}}</text>
+                </view>
+                <view
+                  wx:for="{{week.moreMarkers}}"
+                  wx:for-item="marker"
+                  wx:key="date"
+                  class="more-marker team-more-marker"
+                  style="{{marker.style}}"
+                  data-date="{{marker.date}}"
+                  bindtap="onTeamMoreTap"
+                >
+                  <text>+{{marker.count}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+        <view class="scroll-spacer"></view>
+      </scroll-view>
     </view>
 
     <scroll-view wx:if="{{activeTab === 'basecamp'}}" class="basecamp-scroll" scroll-y="true" enhanced="true">
@@ -172,6 +280,74 @@
           <text class="preview-id">#{{item.id}}</text>
         </view>
         <text class="preview-time">{{item.range}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="other-event-toast" wx:if="{{otherEventPreview}}" bindtap="closeOtherEventPreview">
+    <view class="other-event-card">
+      <text>{{otherEventPreview.title}}({{otherEventPreview.creator}})</text>
+    </view>
+  </view>
+
+  <view class="team-day-preview-backdrop" wx:if="{{teamDayPreviewDate}}" bindtap="closeTeamDayPreview">
+    <view class="team-day-preview-panel" catchtap="noop">
+      <view class="panel-head">
+        <view class="panel-title">
+          <text>{{teamDayPreviewTitle}}</text>
+          <text class="panel-subtitle">{{teamDayPreviewEvents.length}} 个事件</text>
+        </view>
+        <view class="close-button" bindtap="closeTeamDayPreview">×</view>
+      </view>
+      <view
+        wx:for="{{teamDayPreviewEvents}}"
+        wx:key="id"
+        class="event-preview"
+        data-id="{{item.id}}"
+        bindtap="onTeamPreviewEventTap"
+      >
+        <view class="preview-accent {{item.color === 'pink' ? 'preview-accent--pink' : ''}}"></view>
+        <view class="preview-main">
+          <text class="preview-title">{{item.title}}({{item.creator}})</text>
+          <text class="preview-id">#{{item.id}}</text>
+        </view>
+        <text class="preview-time">{{item.start}} - {{item.end}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="team-event-backdrop {{teamEventClosing ? 'team-event-backdrop--closing' : ''}}" wx:if="{{teamDetailEvent}}" bindtap="closeTeamEventDetail">
+    <view class="team-event-detail {{teamEventClosing ? 'team-event-detail--closing' : ''}}" catchtap="noop">
+      <view class="team-event-title">{{teamDetailEvent.title}}({{teamDetailEvent.creator}})</view>
+      <view class="event-gear-summary">
+        <view class="event-gear-chip" wx:for="{{teamDetailEvent.gearSummary}}" wx:key="name">
+          <view class="event-gear-icon">{{item.icon}}</view>
+          <text class="event-gear-name">{{item.name}}</text>
+          <text>{{item.count}}</text>
+        </view>
+        <view wx:if="{{!teamDetailEvent.gearSummary.length}}" class="event-gear-empty">暂无装备</view>
+      </view>
+      <view class="team-event-delete" bindtap="deleteTeamEvent">删除团队事件</view>
+
+      <view class="participant-editor">
+        <view class="participant-block" wx:for="{{memberGearEditors}}" wx:for-item="editor" wx:key="member.id">
+          <view class="participant-head" data-id="{{editor.member.id}}" bindtap="toggleMemberGear">
+            <view class="member-avatar member-avatar--{{editor.member.color}}">{{editor.member.avatar}}</view>
+            <text class="participant-name">{{editor.member.name}}</text>
+            <text class="participant-toggle">{{editor.expanded ? '收起' : '展开'}}</text>
+          </view>
+          <view wx:if="{{editor.expanded}}" class="participant-gear-list">
+            <view class="participant-gear-row" wx:for="{{editor.allocations}}" wx:for-item="gear" wx:key="id">
+              <view class="gear-card-icon">{{gear.icon}}</view>
+              <text class="participant-gear-name">{{gear.name}}</text>
+              <view class="gear-controls">
+                <view class="gear-control-button" data-member="{{editor.member.id}}" data-gear="{{gear.id}}" bindtap="decreaseEventGear">-</view>
+                <view class="gear-count">{{gear.count}}</view>
+                <view class="gear-control-button" data-member="{{editor.member.id}}" data-gear="{{gear.id}}" bindtap="increaseEventGear">+</view>
+              </view>
+            </view>
+          </view>
+        </view>
       </view>
     </view>
   </view>
