@@ -320,6 +320,11 @@ page {
   box-shadow: 0 14rpx 36rpx rgba(39, 58, 82, 0.08);
 }
 
+.team-card--pinned {
+  background: rgba(238, 241, 245, 0.86);
+  border-color: rgba(113, 128, 148, 0.2);
+}
+
 .team-avatar,
 .member-avatar {
   display: flex;
@@ -386,11 +391,16 @@ page {
 }
 
 .team-pin-button {
+  width: 52rpx;
   background: rgba(221, 240, 229, 0.9);
   color: #437557;
+  font-size: 26rpx;
 }
 
 .team-pin-button--active {
+  width: 52rpx;
+  background: rgba(229, 233, 238, 0.94);
+  color: #536174;
   box-shadow: inset 0 0 0 2rpx rgba(67, 117, 87, 0.22);
 }
 

@@ -656,10 +656,16 @@ Page({
   pinTeam(event: TouchEventLike) {
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
-    const teams = ((this.data as { teams: TeamCard[] }).teams).map((item) => {
-      if (item.id !== id) return item
-      return { ...item, pinned: !item.pinned }
-    }).sort((a, b) => Number(b.pinned) - Number(a.pinned))
+    const currentTeams = (this.data as { teams: TeamCard[] }).teams
+    const target = currentTeams.find((item) => item.id === id)
+    if (!target) return
+    const remaining = currentTeams.filter((item) => item.id !== id)
+    const pinnedTeams = remaining.filter((item) => item.pinned)
+    const normalTeams = remaining.filter((item) => !item.pinned)
+    const moved = { ...target, pinned: !target.pinned }
+    const teams = moved.pinned
+      ? [moved, ...pinnedTeams, ...normalTeams]
+      : [...pinnedTeams, moved, ...normalTeams]
     this.setData({ teams })
   },
 

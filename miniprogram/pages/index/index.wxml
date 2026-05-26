@@ -75,14 +75,14 @@
 
     <scroll-view wx:if="{{activeTab === 'team' && !selectedTeamId}}" class="team-scroll" scroll-y="true" enhanced="true">
       <view class="team-list">
-        <view class="team-card" wx:for="{{teams}}" wx:key="id" data-id="{{item.id}}" bindtap="enterTeam">
+        <view class="team-card {{item.pinned ? 'team-card--pinned' : ''}}" wx:for="{{teams}}" wx:key="id" data-id="{{item.id}}" bindtap="enterTeam">
           <view class="team-avatar">{{item.avatar}}</view>
           <view class="team-card-copy">
             <text class="team-card-title">{{item.name}}</text>
             <text class="team-card-count">{{item.memberCount}} 人</text>
           </view>
           <view class="team-card-actions">
-            <view class="team-pin-button {{item.pinned ? 'team-pin-button--active' : ''}}" data-id="{{item.id}}" catchtap="pinTeam">↑</view>
+            <view class="team-pin-button {{item.pinned ? 'team-pin-button--active' : ''}}" data-id="{{item.id}}" catchtap="pinTeam">{{item.pinned ? '↓' : '↑'}}</view>
             <view class="team-exit-button" data-id="{{item.id}}" catchtap="exitTeam">×</view>
           </view>
         </view>
