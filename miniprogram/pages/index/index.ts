@@ -7,6 +7,12 @@ type InputEventLike = {
   detail: { value: string }
 }
 
+type PickerEventLike = {
+  detail: { value: string | number }
+}
+
+type TabKey = 'calendar' | 'team' | 'basecamp'
+
 type CalendarDay = {
   date: string
   day: number
@@ -58,8 +64,26 @@ type EventPreview = ClimbEvent & {
   range: string
 }
 
+type GearIconOption = {
+  label: string
+  icon: string
+}
+
+type GearItem = {
+  id: string
+  name: string
+  icon: string
+  count: number
+}
+
 const DAY_MS = 24 * 60 * 60 * 1000
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const GEAR_ICON_OPTIONS: GearIconOption[] = [
+  { label: '快挂', icon: 'Q' },
+  { label: '主锁', icon: 'L' },
+  { label: '机械塞', icon: 'C' },
+  { label: '绳索', icon: 'R' },
+]
 const MONTH_NAMES = [
   'January',
   'February',
@@ -305,6 +329,8 @@ function buildWeekMoreMarkers(weekStartDate: Date, monthStart: string, monthEnd:
 
 Page({
   data: {
+    activeTab: 'calendar' as TabKey,
+    pageTitle: 'Calendar',
     months: [] as CalendarMonth[],
     weekdays: WEEKDAYS,
     events: seedEvents as ClimbEvent[],
@@ -321,6 +347,19 @@ Page({
     expandedPanelStyle: '',
     editingEvent: null as EventPreview | null,
     editTitle: '',
+    loggedIn: false,
+    nickname: '山野同伴',
+    gearIconOptions: GEAR_ICON_OPTIONS,
+    gearIconLabels: GEAR_ICON_OPTIONS.map((item) => item.label),
+    selectedGearIconIndex: 0,
+    selectedGearIcon: GEAR_ICON_OPTIONS[0].icon,
+    selectedGearIconLabel: GEAR_ICON_OPTIONS[0].label,
+    newGearName: '',
+    gearItems: [
+      { id: 'gear-quickdraw', name: '快挂', icon: 'Q', count: 8 },
+      { id: 'gear-locker', name: '主锁', icon: 'L', count: 4 },
+      { id: 'gear-rope', name: '绳索', icon: 'R', count: 1 },
+    ] as GearItem[],
   },
 
   longPressActive: false,
@@ -329,6 +368,22 @@ Page({
 
   onLoad() {
     this.refreshMonths()
+  },
+
+  switchTab(event: TouchEventLike) {
+    const tab = String(event.currentTarget.dataset.tab || 'calendar') as TabKey
+    const titleMap: Record<TabKey, string> = {
+      calendar: 'Calendar',
+      team: 'Team',
+      basecamp: 'BaseCamp',
+    }
+    this.setData({
+      activeTab: tab,
+      pageTitle: titleMap[tab],
+      expandedDate: '',
+      createVisible: false,
+      editingEvent: null,
+    })
   },
 
   refreshMonths() {
@@ -435,6 +490,81 @@ Page({
 
   onCreateInput(event: InputEventLike) {
     this.setData({ createTitle: event.detail.value })
+  },
+
+  login() {
+    this.setData({ loggedIn: true })
+  },
+
+  onNicknameInput(event: InputEventLike) {
+    this.setData({ nickname: event.detail.value })
+  },
+
+  onGearIconChange(event: PickerEventLike) {
+    const index = Number(event.detail.value)
+    const option = GEAR_ICON_OPTIONS[index] || GEAR_ICON_OPTIONS[0]
+    this.setData({
+      selectedGearIconIndex: index,
+      selectedGearIcon: option.icon,
+      selectedGearIconLabel: option.label,
+    })
+  },
+
+  onGearNameInput(event: InputEventLike) {
+    this.setData({ newGearName: event.detail.value })
+  },
+
+  addGear() {
+    const data = this.data as {
+      gearItems: GearItem[]
+      gearIconOptions: GearIconOption[]
+      selectedGearIconIndex: number
+      newGearName: string
+    }
+    const name = data.newGearName.trim()
+    if (!name) return
+    const option = data.gearIconOptions[data.selectedGearIconIndex] || data.gearIconOptions[0]
+    wx.vibrateShort({ type: 'light' })
+    const next: GearItem = {
+      id: `gear-${Date.now()}`,
+      name,
+      icon: option.icon,
+      count: 1,
+    }
+    this.setData({
+      gearItems: [next, ...data.gearItems],
+      newGearName: '',
+      selectedGearIconIndex: 0,
+      selectedGearIcon: GEAR_ICON_OPTIONS[0].icon,
+      selectedGearIconLabel: GEAR_ICON_OPTIONS[0].label,
+    })
+  },
+
+  decreaseGear(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    wx.vibrateShort({ type: 'light' })
+    const gearItems = ((this.data as { gearItems: GearItem[] }).gearItems).map((item) => {
+      if (item.id !== id) return item
+      return { ...item, count: Math.max(0, item.count - 1) }
+    })
+    this.setData({ gearItems })
+  },
+
+  increaseGear(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    wx.vibrateShort({ type: 'light' })
+    const gearItems = ((this.data as { gearItems: GearItem[] }).gearItems).map((item) => {
+      if (item.id !== id) return item
+      return { ...item, count: item.count + 1 }
+    })
+    this.setData({ gearItems })
+  },
+
+  deleteGear(event: TouchEventLike) {
+    const id = String(event.currentTarget.dataset.id || '')
+    wx.vibrateShort({ type: 'light' })
+    const gearItems = ((this.data as { gearItems: GearItem[] }).gearItems).filter((item) => item.id !== id)
+    this.setData({ gearItems })
   },
 
   saveCreatedEvent() {

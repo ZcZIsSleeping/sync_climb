@@ -1,7 +1,7 @@
 <view class="page">
   <view class="app-shell">
     <view class="topbar">
-      <text class="brand">Calendar</text>
+      <text class="brand">{{pageTitle}}</text>
       <view class="topbar-actions">
         <view class="icon-button"><view class="filter-icon"></view></view>
         <view class="icon-button"><view class="plus-icon"></view></view>
@@ -9,6 +9,7 @@
     </view>
 
     <scroll-view
+      wx:if="{{activeTab === 'calendar'}}"
       class="calendar-scroll"
       scroll-y="{{scrollEnabled}}"
       enhanced="true"
@@ -68,12 +69,72 @@
       <view class="scroll-spacer"></view>
     </scroll-view>
 
+    <view wx:if="{{activeTab === 'team'}}" class="placeholder-view">
+      <view class="placeholder-icon">
+        <view class="team-icon">
+          <view class="team-head team-head--left"></view>
+          <view class="team-head team-head--right"></view>
+          <view class="team-body team-body--left"></view>
+          <view class="team-body team-body--right"></view>
+        </view>
+      </view>
+      <text class="placeholder-title">Team</text>
+      <text class="placeholder-text">团队同步稍后接入</text>
+    </view>
+
+    <scroll-view wx:if="{{activeTab === 'basecamp'}}" class="basecamp-scroll" scroll-y="true" enhanced="true">
+      <view class="basecamp-content">
+        <view class="profile-panel">
+          <view wx:if="{{!loggedIn}}" class="login-empty">
+            <button class="login-button" bindtap="login">点击登录</button>
+          </view>
+          <view wx:else class="profile-row">
+            <view class="avatar">S</view>
+            <input class="nickname-input" value="{{nickname}}" bindinput="onNicknameInput" />
+          </view>
+        </view>
+
+        <view class="gear-section">
+          <view class="section-head">
+            <text class="section-title">装备区</text>
+            <text class="section-count">{{gearItems.length}} 件装备</text>
+          </view>
+
+          <view class="gear-add-card">
+            <picker mode="selector" range="{{gearIconLabels}}" value="{{selectedGearIconIndex}}" bindchange="onGearIconChange">
+              <view class="gear-picker">
+                <text class="gear-icon">{{selectedGearIcon}}</text>
+                <text class="gear-picker-label">{{selectedGearIconLabel}}</text>
+              </view>
+            </picker>
+            <input class="gear-name-input" value="{{newGearName}}" placeholder="填写装备名称" bindinput="onGearNameInput" />
+            <button class="gear-add-button" bindtap="addGear">增加</button>
+          </view>
+
+          <view class="gear-list">
+            <view class="gear-card" wx:for="{{gearItems}}" wx:key="id">
+              <view class="gear-card-main">
+                <view class="gear-card-icon">{{item.icon}}</view>
+                <text class="gear-card-name">{{item.name}}</text>
+              </view>
+              <view class="gear-controls">
+                <view class="gear-control-button" data-id="{{item.id}}" bindtap="decreaseGear">-</view>
+                <view class="gear-count">{{item.count}}</view>
+                <view class="gear-control-button" data-id="{{item.id}}" bindtap="increaseGear">+</view>
+                <view class="gear-delete-button" data-id="{{item.id}}" bindtap="deleteGear">×</view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+    </scroll-view>
+
     <view class="tabbar">
-      <view class="tab-item tab-item--active">
+      <view class="tab-item {{activeTab === 'calendar' ? 'tab-item--active' : ''}}" data-tab="calendar" bindtap="switchTab">
         <view class="calendar-icon"></view>
         <text>Calendar</text>
       </view>
-      <view class="tab-item">
+      <view class="tab-item {{activeTab === 'team' ? 'tab-item--active' : ''}}" data-tab="team" bindtap="switchTab">
         <view class="team-icon">
           <view class="team-head team-head--left"></view>
           <view class="team-head team-head--right"></view>
@@ -82,7 +143,7 @@
         </view>
         <text>Team</text>
       </view>
-      <view class="tab-item">
+      <view class="tab-item {{activeTab === 'basecamp' ? 'tab-item--active' : ''}}" data-tab="basecamp" bindtap="switchTab">
         <view class="tent-icon"></view>
         <text>BaseCamp</text>
       </view>
