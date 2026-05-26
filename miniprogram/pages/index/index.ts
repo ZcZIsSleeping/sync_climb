@@ -7,11 +7,16 @@ type InputEventLike = {
   detail: { value: string }
 }
 
+type ScrollEventLike = {
+  detail: { scrollTop: number }
+}
+
 type PickerEventLike = {
   detail: { value: string | number }
 }
 
 type TabKey = 'calendar' | 'team' | 'basecamp'
+type ApiMethod = 'GET' | 'POST' | 'PATCH' | 'DELETE'
 
 type CalendarDay = {
   date: string
@@ -43,6 +48,9 @@ type ClimbEvent = {
   end: string
   createdAt: number
   color: 'blue' | 'pink' | 'green' | 'violet'
+  eventType?: 'personal' | 'pending_team' | 'team' | 'member_personal'
+  teamId?: string
+  status?: string
 }
 
 type EventSegment = {
@@ -79,6 +87,7 @@ type GearItem = {
   name: string
   icon: string
   count: number
+  gearTypeId?: string
 }
 
 type TeamMember = {
@@ -100,6 +109,7 @@ type TeamCard = {
 
 type TeamCalendarEvent = ClimbEvent & {
   memberId: string
+  creatorUserId?: string
   isTeamEvent: boolean
   gearSummary: GearItem[]
 }
@@ -111,114 +121,17 @@ type MemberGearEditor = {
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000
+const MONTH_ROW_HEIGHT_RPX = 1320
+const MONTH_HISTORY_WINDOW = 24
+const INITIAL_MONTH_OFFSET = -MONTH_HISTORY_WINDOW
+const CURRENT_MONTH_INDEX = MONTH_HISTORY_WINDOW
+const INITIAL_MONTH_COUNT = MONTH_HISTORY_WINDOW * 2 + 1
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const GEAR_ICON_OPTIONS: GearIconOption[] = [
   { label: '快挂', icon: 'Q' },
   { label: '主锁', icon: 'L' },
   { label: '机械塞', icon: 'C' },
   { label: '绳索', icon: 'R' },
-]
-const seedTeams: TeamCard[] = [
-  { id: 'team-everest', avatar: 'E', name: '珠峰大本营小队', roomNo: '8848', memberCount: 4, pinned: true },
-  { id: 'team-siguniang', avatar: 'S', name: '四姑娘山周末队', roomNo: '6250', memberCount: 6, pinned: false },
-  { id: 'team-rock', avatar: 'R', name: '城市岩壁训练组', roomNo: '4096', memberCount: 3, pinned: false },
-]
-const seedMembers: TeamMember[] = [
-  {
-    id: 'me',
-    name: '我',
-    avatar: 'S',
-    color: 'blue',
-    gear: [
-      { id: 'me-quickdraw', name: '快挂', icon: 'Q', count: 8 },
-      { id: 'me-locker', name: '主锁', icon: 'L', count: 4 },
-      { id: 'me-rope', name: '绳索', icon: 'R', count: 1 },
-    ],
-  },
-  {
-    id: 'lin',
-    name: '林晨',
-    avatar: 'L',
-    color: 'pink',
-    gear: [
-      { id: 'lin-cam', name: '机械塞', icon: 'C', count: 6 },
-      { id: 'lin-locker', name: '主锁', icon: 'L', count: 3 },
-      { id: 'lin-rope', name: '绳索', icon: 'R', count: 1 },
-    ],
-  },
-  {
-    id: 'zhou',
-    name: '周野',
-    avatar: 'Z',
-    color: 'green',
-    gear: [
-      { id: 'zhou-quickdraw', name: '快挂', icon: 'Q', count: 10 },
-      { id: 'zhou-locker', name: '主锁', icon: 'L', count: 5 },
-    ],
-  },
-  {
-    id: 'alan',
-    name: '阿岚',
-    avatar: 'A',
-    color: 'violet',
-    gear: [
-      { id: 'alan-cam', name: '机械塞', icon: 'C', count: 8 },
-      { id: 'alan-quickdraw', name: '快挂', icon: 'Q', count: 6 },
-    ],
-  },
-]
-const seedTeamEvents: TeamCalendarEvent[] = [
-  {
-    id: 'TEVT-001',
-    title: '高海拔装备测试',
-    creator: '林晨',
-    memberId: 'lin',
-    start: '2025-05-06',
-    end: '2025-05-09',
-    createdAt: 1713300000000,
-    color: 'pink',
-    isTeamEvent: false,
-    gearSummary: [],
-  },
-  {
-    id: 'TEVT-002',
-    title: '绳索系统复训',
-    creator: '周野',
-    memberId: 'zhou',
-    start: '2025-05-08',
-    end: '2025-05-12',
-    createdAt: 1713400000000,
-    color: 'blue',
-    isTeamEvent: false,
-    gearSummary: [],
-  },
-  {
-    id: 'TEVT-003',
-    title: '天气窗口讨论',
-    creator: '阿岚',
-    memberId: 'alan',
-    start: '2025-05-16',
-    end: '2025-05-16',
-    createdAt: 1713500000000,
-    color: 'pink',
-    isTeamEvent: false,
-    gearSummary: [],
-  },
-  {
-    id: 'TEVT-TEAM-001',
-    title: '珠峰营地协同计划',
-    creator: '我',
-    memberId: 'me',
-    start: '2025-05-20',
-    end: '2025-05-23',
-    createdAt: 1713600000000,
-    color: 'blue',
-    isTeamEvent: true,
-    gearSummary: [
-      { id: 'event-quickdraw', name: '快挂', icon: 'Q', count: 4 },
-      { id: 'event-locker', name: '主锁', icon: 'L', count: 2 },
-    ],
-  },
 ]
 const MONTH_NAMES = [
   'January',
@@ -235,62 +148,19 @@ const MONTH_NAMES = [
   'December',
 ]
 
-const seedEvents: ClimbEvent[] = [
-  {
-    id: 'EVT-2025-0416',
-    title: '川西岩壁训练',
-    creator: '我',
-    start: '2025-04-03',
-    end: '2025-04-16',
-    createdAt: 1712700000000,
-    color: 'blue',
-  },
-  {
-    id: 'EVT-2025-0409',
-    title: '装备轻量化复盘',
-    creator: '阿岚',
-    start: '2025-04-06',
-    end: '2025-04-09',
-    createdAt: 1712820000000,
-    color: 'pink',
-  },
-  {
-    id: 'EVT-2025-0415',
-    title: '绳索系统演练',
-    creator: '周野',
-    start: '2025-04-07',
-    end: '2025-04-15',
-    createdAt: 1712920000000,
-    color: 'blue',
-  },
-  {
-    id: 'EVT-2025-0508',
-    title: '四姑娘山二峰攀登计划',
-    creator: '我',
-    start: '2025-05-06',
-    end: '2025-05-10',
-    createdAt: 1713000000000,
-    color: 'blue',
-  },
-  {
-    id: 'EVT-2025-0518',
-    title: '雪山适应性训练',
-    creator: '林晨',
-    start: '2025-05-15',
-    end: '2025-05-18',
-    createdAt: 1713100000000,
-    color: 'pink',
-  },
-  {
-    id: 'EVT-2025-0529',
-    title: '广州出发 - 拉萨',
-    creator: '我',
-    start: '2025-05-26',
-    end: '2025-05-29',
-    createdAt: 1713200000000,
-    color: 'blue',
-  },
+const API_BASE = 'http://localhost:8787'
+const TEST_ACCOUNTS = [
+  { code: 'alice', nickname: 'Alice' },
+  { code: 'bob', nickname: 'Bob' },
+  { code: 'charlie', nickname: 'Charlie' },
 ]
+const COLORS: Array<'blue' | 'pink' | 'green' | 'violet'> = ['blue', 'pink', 'green', 'violet']
+const GEAR_TYPE_BY_LABEL: Record<string, string> = {
+  快挂: 'gear_quickdraw',
+  主锁: 'gear_locking_carabiner',
+  机械塞: 'gear_cam',
+  绳索: 'gear_rope',
+}
 
 function dateKey(date: Date): string {
   const y = date.getFullYear()
@@ -312,6 +182,13 @@ function addDays(date: Date, days: number): Date {
 
 function addMonths(date: Date, months: number): Date {
   return new Date(date.getFullYear(), date.getMonth() + months, 1)
+}
+
+function apiCalendarRange() {
+  const now = new Date()
+  const start = dateKey(new Date(now.getFullYear(), now.getMonth() - MONTH_HISTORY_WINDOW, 1))
+  const endMonth = new Date(now.getFullYear(), now.getMonth() + MONTH_HISTORY_WINDOW + 1, 0)
+  return { start, end: dateKey(endMonth) }
 }
 
 function mondayIndex(date: Date): number {
@@ -353,7 +230,8 @@ function buildMonths(
   selectingEnd: string,
   options: BuildMonthOptions = { maxVisibleEvents: 2 },
 ): CalendarMonth[] {
-  const anchor = new Date(2025, 3, 1)
+  const now = new Date()
+  const anchor = new Date(now.getFullYear(), now.getMonth() + INITIAL_MONTH_OFFSET, 1)
   const months: CalendarMonth[] = []
   for (let i = 0; i < monthCount; i += 1) {
     months.push(buildMonth(addMonths(anchor, i), events, selectingStart, selectingEnd, options))
@@ -511,9 +389,16 @@ Page({
     activeTab: 'calendar' as TabKey,
     pageTitle: 'Calendar',
     months: [] as CalendarMonth[],
+    currentMonthKey: `${new Date().getFullYear()}-${new Date().getMonth() + 1}`,
+    calendarScrollIntoView: '',
+    showTodayButton: false,
     weekdays: WEEKDAYS,
-    events: seedEvents as ClimbEvent[],
-    monthCount: 4,
+    apiBase: API_BASE,
+    authToken: '',
+    currentUserId: '',
+    testAccounts: TEST_ACCOUNTS,
+    events: [] as ClimbEvent[],
+    monthCount: INITIAL_MONTH_COUNT,
     scrollEnabled: true,
     selectingStart: '',
     selectingEnd: '',
@@ -535,24 +420,26 @@ Page({
     selectedGearIcon: GEAR_ICON_OPTIONS[0].icon,
     selectedGearIconLabel: GEAR_ICON_OPTIONS[0].label,
     newGearName: '',
-    gearItems: [
-      { id: 'gear-quickdraw', name: '快挂', icon: 'Q', count: 8 },
-      { id: 'gear-locker', name: '主锁', icon: 'L', count: 4 },
-      { id: 'gear-rope', name: '绳索', icon: 'R', count: 1 },
-    ] as GearItem[],
-    teams: seedTeams as TeamCard[],
+    gearItems: [] as GearItem[],
+    newTeamName: '',
+    joinRoomCode: '',
+    teamEditVisible: false,
+    teamEditClosing: false,
+    teams: [] as TeamCard[],
     selectedTeamId: '',
     selectedTeam: null as TeamCard | null,
     teamName: '',
-    teamMembers: seedMembers as TeamMember[],
-    filteredTeamMembers: seedMembers as TeamMember[],
+    teamMembers: [] as TeamMember[],
+    filteredTeamMembers: [] as TeamMember[],
     teamSearchId: '',
     teamGearExpanded: false,
     teamGearClosing: false,
     teamOnlyFilter: false,
-    teamEvents: seedTeamEvents as TeamCalendarEvent[],
+    teamEvents: [] as TeamCalendarEvent[],
     teamMonths: [] as CalendarMonth[],
-    teamMonthCount: 4,
+    teamMonthCount: INITIAL_MONTH_COUNT,
+    teamCalendarScrollIntoView: '',
+    showTeamTodayButton: false,
     teamSelectingStart: '',
     teamSelectingEnd: '',
     teamEventClosing: false,
@@ -581,6 +468,137 @@ Page({
   onLoad() {
     this.refreshMonths()
     this.refreshTeamMonths()
+    setTimeout(() => this.scrollToTodayMonth(), 80)
+  },
+
+  api<T>(path: string, method: ApiMethod = 'GET', body?: unknown): Promise<T> {
+    const token = (this.data as { authToken: string }).authToken
+    return new Promise((resolve, reject) => {
+      wx.request({
+        url: `${API_BASE}${path}`,
+        method,
+        data: body,
+        header: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bearer ${token}` } : {}),
+        },
+        success: (res) => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            resolve(res.data as T)
+            return
+          }
+          reject(new Error(`HTTP ${res.statusCode}`))
+        },
+        fail: reject,
+      })
+    })
+  },
+
+  toast(title: string) {
+    wx.showToast({ title, icon: 'none' })
+  },
+
+  mapApiEvent(item: any, index = 0): ClimbEvent {
+    return {
+      id: item.id,
+      title: item.title,
+      creator: item.creatorName || item.memberName || (item.type === 'personal' ? '我' : 'Team'),
+      start: item.startDate,
+      end: item.endDate,
+      createdAt: Date.now() - index,
+      color: item.type === 'pending_team' ? 'pink' : COLORS[index % COLORS.length],
+      eventType: item.type,
+      teamId: item.teamId,
+      status: item.status,
+    }
+  },
+
+  mapApiTeamEvent(item: any, index = 0): TeamCalendarEvent {
+    const isTeamEvent = item.type === 'team'
+    return {
+      ...this.mapApiEvent(item, index),
+      creator: item.creatorName || item.memberName || (isTeamEvent ? 'Team' : '成员'),
+      memberId: item.memberId || item.creatorUserId || 'team',
+      creatorUserId: item.creatorUserId,
+      isTeamEvent,
+      gearSummary: [],
+    }
+  },
+
+  mapApiGear(item: any): GearItem {
+    return {
+      id: item.id,
+      name: item.name,
+      icon: item.icon || item.iconKey || 'G',
+      count: item.count ?? item.quantity ?? 0,
+      gearTypeId: item.gearTypeId,
+    }
+  },
+
+  mapApiTeam(item: any): TeamCard {
+    return {
+      id: item.id,
+      avatar: (item.name || 'T').slice(0, 1).toUpperCase(),
+      name: item.name,
+      roomNo: item.roomCode,
+      memberCount: item.memberCount || 1,
+      pinned: false,
+    }
+  },
+
+  ensureLogin(): boolean {
+    if ((this.data as { authToken: string }).authToken) return true
+    this.toast('请先登录测试账号')
+    return false
+  },
+
+  async loadAppData() {
+    if (!this.ensureLogin()) return
+    await Promise.all([
+      this.loadCalendarEvents(),
+      this.loadGearItems(),
+      this.loadTeams(),
+    ])
+  },
+
+  async loadCalendarEvents() {
+    const range = apiCalendarRange()
+    const res = await this.api<{ events: any[] }>(`/me/calendar/events?start=${range.start}&end=${range.end}`)
+    this.setData({ events: res.events.map((item, index) => this.mapApiEvent(item, index)) }, () => this.refreshMonths())
+  },
+
+  async loadGearItems() {
+    const res = await this.api<{ gears: any[] }>('/me/gears')
+    this.setData({ gearItems: res.gears.map((item) => this.mapApiGear(item)) })
+  },
+
+  async loadTeams() {
+    const res = await this.api<{ teams: any[] }>('/teams')
+    const current = (this.data as { teams: TeamCard[] }).teams
+    const pinned = new Set(current.filter((item) => item.pinned).map((item) => item.id))
+    this.setData({ teams: res.teams.map((item) => ({ ...this.mapApiTeam(item), pinned: pinned.has(item.id) })) })
+  },
+
+  async loadTeamDetailData(teamId: string) {
+    const members = await this.api<{ members: any[] }>(`/teams/${teamId}/members`)
+    const teamMembers = members.members.map((item, index) => ({
+      id: item.id,
+      name: item.id === (this.data as { currentUserId: string }).currentUserId ? '我' : item.name,
+      avatar: item.avatar || item.name.slice(0, 1).toUpperCase(),
+      color: COLORS[index % COLORS.length],
+      gear: (item.gear || []).map((gear: any) => this.mapApiGear(gear)),
+    }))
+    this.setData({ teamMembers, filteredTeamMembers: teamMembers })
+    await this.loadTeamEvents(teamId)
+  },
+
+  async loadTeamEvents(teamId: string) {
+    const range = apiCalendarRange()
+    const res = await this.api<{ events: any[] }>(
+      `/teams/${teamId}/calendar/events?start=${range.start}&end=${range.end}&onlyTeamEvents=${(this.data as { teamOnlyFilter: boolean }).teamOnlyFilter}`,
+    )
+    const events = res.events.map((item, index) => this.mapApiTeamEvent(item, index))
+    this.setData({ teamEvents: events }, () => this.refreshTeamMonths())
   },
 
   switchTab(event: TouchEventLike) {
@@ -596,6 +614,15 @@ Page({
       expandedDate: '',
       createVisible: false,
       editingEvent: null,
+      ...(tab === 'calendar' ? { calendarScrollIntoView: `month-${(this.data as { currentMonthKey: string }).currentMonthKey}`, showTodayButton: false } : {}),
+      ...(tab === 'team' && (this.data as { selectedTeamId: string }).selectedTeamId ? { teamCalendarScrollIntoView: `team-month-${(this.data as { currentMonthKey: string }).currentMonthKey}`, showTeamTodayButton: false } : {}),
+    }, () => {
+      if (tab === 'calendar') {
+        setTimeout(() => this.setData({ calendarScrollIntoView: '' }), 120)
+      }
+      if (tab === 'team' && (this.data as { selectedTeamId: string }).selectedTeamId) {
+        setTimeout(() => this.setData({ teamCalendarScrollIntoView: '' }), 120)
+      }
     })
   },
 
@@ -630,12 +657,38 @@ Page({
     this.setData({ monthCount: data.monthCount + 3 }, () => this.refreshMonths())
   },
 
+  onCalendarScroll(event: ScrollEventLike) {
+    const system = wx.getSystemInfoSync()
+    const pxPerRpx = system.windowWidth / 750
+    const currentIndex = Math.max(0, Math.floor(event.detail.scrollTop / (MONTH_ROW_HEIGHT_RPX * pxPerRpx)))
+    this.setData({ showTodayButton: currentIndex !== CURRENT_MONTH_INDEX })
+  },
+
+  scrollToTodayMonth() {
+    const currentMonthKey = (this.data as { currentMonthKey: string }).currentMonthKey
+    this.setData({ calendarScrollIntoView: `month-${currentMonthKey}`, showTodayButton: false })
+    setTimeout(() => this.setData({ calendarScrollIntoView: '' }), 120)
+  },
+
   onTeamScrollToLower() {
     const data = this.data as { teamMonthCount: number }
     this.setData({ teamMonthCount: data.teamMonthCount + 3 }, () => this.refreshTeamMonths())
   },
 
-  enterTeam(event: TouchEventLike) {
+  onTeamCalendarScroll(event: ScrollEventLike) {
+    const system = wx.getSystemInfoSync()
+    const pxPerRpx = system.windowWidth / 750
+    const currentIndex = Math.max(0, Math.floor(event.detail.scrollTop / (MONTH_ROW_HEIGHT_RPX * pxPerRpx)))
+    this.setData({ showTeamTodayButton: currentIndex !== CURRENT_MONTH_INDEX })
+  },
+
+  scrollToTeamTodayMonth() {
+    const currentMonthKey = (this.data as { currentMonthKey: string }).currentMonthKey
+    this.setData({ teamCalendarScrollIntoView: `team-month-${currentMonthKey}`, showTeamTodayButton: false })
+    setTimeout(() => this.setData({ teamCalendarScrollIntoView: '' }), 120)
+  },
+
+  async enterTeam(event: TouchEventLike) {
     const id = String(event.currentTarget.dataset.id || '')
     const team = ((this.data as { teams: TeamCard[] }).teams).find((item) => item.id === id)
     if (!team) return
@@ -648,7 +701,9 @@ Page({
       otherEventPreview: null,
       teamDayPreviewDate: '',
       teamDetailEvent: null,
-    }, () => this.refreshTeamMonths())
+    })
+    await this.loadTeamDetailData(id)
+    this.scrollToTeamTodayMonth()
   },
 
   backToTeamList() {
@@ -682,8 +737,9 @@ Page({
   exitTeam(event: TouchEventLike) {
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
-    const teams = ((this.data as { teams: TeamCard[] }).teams).filter((item) => item.id !== id)
-    this.setData({ teams })
+    this.api(`/teams/${id}/leave`, 'DELETE')
+      .then(() => this.loadTeams())
+      .catch(() => this.toast('退出团队失败'))
   },
 
   onTeamNameInput(event: InputEventLike) {
@@ -695,6 +751,56 @@ Page({
     this.setData({ teamName, teams })
   },
 
+  onNewTeamNameInput(event: InputEventLike) {
+    this.setData({ newTeamName: event.detail.value })
+  },
+
+  onJoinRoomInput(event: InputEventLike) {
+    this.setData({ joinRoomCode: event.detail.value })
+  },
+
+  openTeamEditPanel() {
+    this.setData({ teamEditVisible: true, teamEditClosing: false })
+  },
+
+  closeTeamEditPanel() {
+    this.setData({ teamEditClosing: true })
+    setTimeout(() => {
+      this.setData({ teamEditVisible: false, teamEditClosing: false })
+    }, 220)
+  },
+
+  randomTeamName(): string {
+    return `Team-${Math.random().toString(36).slice(2, 8).toUpperCase()}`
+  },
+
+  async createTeam() {
+    if (!this.ensureLogin()) return
+    const name = this.randomTeamName()
+    await this.api('/teams', 'POST', { name })
+    this.setData({ newTeamName: '' })
+    await this.loadTeams()
+    this.closeTeamEditPanel()
+  },
+
+  async joinTeam() {
+    if (!this.ensureLogin()) return
+    const roomCode = (this.data as { joinRoomCode: string }).joinRoomCode.trim()
+    if (!roomCode) return
+    await this.api('/teams/join', 'POST', { roomCode })
+    this.setData({ joinRoomCode: '' })
+    await this.loadTeams()
+    this.closeTeamEditPanel()
+  },
+
+  saveTeamName() {
+    const data = this.data as { selectedTeamId: string; teamName: string }
+    if (!data.selectedTeamId || !data.teamName.trim()) return
+    this.api(`/teams/${data.selectedTeamId}`, 'PATCH', { name: data.teamName.trim() })
+      .then(() => this.loadTeams())
+      .catch(() => this.toast('团队名保存失败'))
+  },
+
   copyRoomNo() {
     const team = (this.data as { selectedTeam: TeamCard | null }).selectedTeam
     if (!team) return
@@ -704,7 +810,11 @@ Page({
 
   toggleTeamFilter() {
     const next = !(this.data as { teamOnlyFilter: boolean }).teamOnlyFilter
-    this.setData({ teamOnlyFilter: next }, () => this.refreshTeamMonths())
+    const teamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    this.setData({ teamOnlyFilter: next }, () => {
+      if (teamId) this.loadTeamEvents(teamId)
+      else this.refreshTeamMonths()
+    })
   },
 
   toggleTeamGearPanel() {
@@ -832,6 +942,20 @@ Page({
       .exec()
   },
 
+  async openTeamEventDetail(found: TeamCalendarEvent) {
+    const teamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    if (!teamId) return
+    const detail = await this.api<{ gearSummary: any[]; participants: Array<{ userId: string }> }>(`/teams/${teamId}/events/${found.id}`)
+    const eventWithGear = {
+      ...found,
+      gearSummary: (detail.gearSummary || []).map((item) => this.mapApiGear({ ...item, id: item.gearTypeId, count: item.quantity })),
+    }
+    this.setData({
+      teamDetailEvent: eventWithGear,
+      memberGearEditors: this.buildMemberGearEditors(eventWithGear, detail.participants.map((item) => item.userId)),
+    })
+  },
+
   onTeamEventTap(event: TouchEventLike) {
     if (this.suppressNextEventTap) {
       this.suppressNextEventTap = false
@@ -844,16 +968,18 @@ Page({
       this.setData({ otherEventPreview: found })
       return
     }
-    this.setData({
-      teamDetailEvent: found,
-      memberGearEditors: this.buildMemberGearEditors(found),
-    })
+    this.openTeamEventDetail(found)
   },
 
   onTeamEventLongPress(event: TouchEventLike) {
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
     if (!found || !found.isTeamEvent) return
+    const currentUserId = (this.data as { currentUserId: string }).currentUserId
+    if (found.creatorUserId && found.creatorUserId !== currentUserId) {
+      this.toast('只能移动自己创建的团队事件')
+      return
+    }
     wx.vibrateShort({ type: 'light' })
     this.eventDragActive = true
     this.eventDragScope = 'team'
@@ -881,27 +1007,26 @@ Page({
     this.updateEventDragFromPoint(touch.clientX, touch.clientY, '.team-day-cell')
   },
 
-  onTeamEventTouchEnd() {
+  async onTeamEventTouchEnd() {
     if (!this.eventDragActive || this.eventDragScope !== 'team') return
     const target = this.eventDragLastDate
     const id = this.eventDragId
-    const duration = this.eventDragDuration
-    const teamEvents = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).map((item) => {
-      if (item.id !== id) return item
-      return {
-        ...item,
-        start: target,
-        end: dateKey(addDays(dateFromKey(target), duration - 1)),
-      }
-    })
+    const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
     this.resetEventDrag()
     this.setData({
-      teamEvents,
       scrollEnabled: true,
       teamSelectingStart: '',
       teamSelectingEnd: '',
       dragGhostVisible: false,
-    }, () => this.refreshTeamMonths())
+    })
+    if (selectedTeamId) {
+      try {
+        await this.api(`/teams/${selectedTeamId}/events/${id}/move`, 'PATCH', { startDate: target })
+      } catch (error) {
+        this.toast('只能移动自己创建的团队事件')
+      }
+      await this.loadTeamEvents(selectedTeamId)
+    }
   },
 
   onTeamMoreTap(event: TouchEventLike) {
@@ -928,10 +1053,7 @@ Page({
       this.setData({ otherEventPreview: found })
       return
     }
-    this.setData({
-      teamDetailEvent: found,
-      memberGearEditors: this.buildMemberGearEditors(found),
-    })
+    this.openTeamEventDetail(found)
   },
 
   getVisibleTeamEventsForDate(date: string): TeamCalendarEvent[] {
@@ -962,6 +1084,10 @@ Page({
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
     if (!found) return
+    if (found.eventType && found.eventType !== 'personal') {
+      this.toast('团队日程请在团队页移动')
+      return
+    }
     this.setData({
       expandedDate: '',
       expandedEvents: [],
@@ -1013,11 +1139,23 @@ Page({
     this.updateEventDragFromPoint(touch.clientX, touch.clientY, '.day-cell')
   },
 
-  onCalendarEventTouchEnd() {
+  async onCalendarEventTouchEnd() {
     if (!this.eventDragActive || this.eventDragScope !== 'calendar') return
     const target = this.eventDragLastDate
     const id = this.eventDragId
     const duration = this.eventDragDuration
+    const dragged = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
+    if (dragged?.eventType && dragged.eventType !== 'personal') {
+      this.resetEventDrag()
+      this.setData({
+        scrollEnabled: true,
+        selectingStart: '',
+        selectingEnd: '',
+        dragGhostVisible: false,
+      }, () => this.refreshMonths())
+      this.toast('团队日程请在团队页移动')
+      return
+    }
     const events = ((this.data as { events: ClimbEvent[] }).events).map((item) => {
       if (item.id !== id) return item
       return {
@@ -1027,6 +1165,8 @@ Page({
       }
     })
     this.resetEventDrag()
+    this.api(`/me/events/${id}/move`, 'PATCH', { startDate: target })
+      .catch(() => this.toast('移动事件失败'))
     this.setData({
       events,
       scrollEnabled: true,
@@ -1110,12 +1250,65 @@ Page({
     this.setData({ createTitle: event.detail.value })
   },
 
-  login() {
-    this.setData({ loggedIn: true })
+  async login(event: TouchEventLike) {
+    const index = Number(event.currentTarget.dataset.index || 0)
+    const account = TEST_ACCOUNTS[index] || TEST_ACCOUNTS[0]
+    try {
+      const res = await this.api<{ token: string; user: { id: string; nickname: string; avatarUrl: string } }>('/auth/wechat-login', 'POST', {
+        code: account.code,
+        nickname: account.nickname,
+        avatarUrl: '',
+      })
+      this.setData({
+        loggedIn: true,
+        authToken: res.token,
+        currentUserId: res.user.id,
+        nickname: res.user.nickname,
+      })
+      await this.loadAppData()
+      this.toast(`已登录 ${res.user.nickname}`)
+    } catch (error) {
+      this.toast('登录失败，请确认后端已启动')
+    }
+  },
+
+  logout() {
+    this.setData({
+      loggedIn: false,
+      authToken: '',
+      currentUserId: '',
+      nickname: '山野同伴',
+      events: [],
+      gearItems: [],
+      teams: [],
+      selectedTeamId: '',
+      selectedTeam: null,
+      teamName: '',
+      teamMembers: [],
+      filteredTeamMembers: [],
+      teamEvents: [],
+      teamDetailEvent: null,
+      otherEventPreview: null,
+      teamDayPreviewDate: '',
+      expandedDate: '',
+      editingEvent: null,
+    }, () => {
+      this.refreshMonths()
+      this.refreshTeamMonths()
+      this.scrollToTodayMonth()
+    })
   },
 
   onNicknameInput(event: InputEventLike) {
     this.setData({ nickname: event.detail.value })
+  },
+
+  async saveNickname() {
+    if (!this.ensureLogin()) return
+    const nickname = (this.data as { nickname: string }).nickname.trim()
+    if (!nickname) return
+    await this.api('/me/profile', 'PATCH', { nickname })
+    this.toast('昵称已保存')
   },
 
   onGearIconChange(event: PickerEventLike) {
@@ -1132,9 +1325,10 @@ Page({
     this.setData({ newGearName: event.detail.value })
   },
 
-  buildMemberGearEditors(event: TeamCalendarEvent): MemberGearEditor[] {
+  buildMemberGearEditors(event: TeamCalendarEvent, participantIds?: string[]): MemberGearEditor[] {
     const members = (this.data as { teamMembers: TeamMember[] }).teamMembers
-    return members.map((member) => ({
+    const visibleMembers = participantIds ? members.filter((member) => participantIds.includes(member.id)) : members
+    return visibleMembers.map((member) => ({
       member,
       expanded: false,
       allocations: member.gear.map((gear) => {
@@ -1167,7 +1361,7 @@ Page({
     this.setData({ memberGearEditors: editors })
   },
 
-  changeEventGear(event: TouchEventLike, delta: number) {
+  async changeEventGear(event: TouchEventLike, delta: number) {
     const memberId = String(event.currentTarget.dataset.member || '')
     const gearId = String(event.currentTarget.dataset.gear || '')
     const data = this.data as {
@@ -1196,6 +1390,18 @@ Page({
     const gearSummary = this.mergeEventGear(editors)
     const updatedEvent = { ...data.teamDetailEvent, gearSummary }
     const teamEvents = data.teamEvents.map((item) => (item.id === updatedEvent.id ? updatedEvent : item))
+    const teamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    if (teamId) {
+      const requirements = editors.flatMap((editor) => (
+        editor.allocations.map((gear) => ({
+          participantUserId: editor.member.id,
+          gearTypeId: gear.gearTypeId || gear.id,
+          quantity: gear.count,
+        }))
+      ))
+      this.api(`/teams/${teamId}/events/${updatedEvent.id}/gear-requirements`, 'PATCH', { requirements })
+        .catch(() => this.toast('装备分配保存失败'))
+    }
     this.setData({
       memberGearEditors: editors,
       teamDetailEvent: updatedEvent,
@@ -1227,10 +1433,12 @@ Page({
     return Array.from(merged.values())
   },
 
-  deleteTeamEvent() {
+  async deleteTeamEvent() {
     const data = this.data as { teamDetailEvent: TeamCalendarEvent | null; teamEvents: TeamCalendarEvent[] }
     if (!data.teamDetailEvent) return
     wx.vibrateShort({ type: 'light' })
+    const teamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    if (teamId) await this.api(`/teams/${teamId}/events/${data.teamDetailEvent.id}`, 'DELETE')
     const teamEvents = data.teamEvents.filter((item) => item.id !== data.teamDetailEvent!.id)
     this.setData({
       teamEvents,
@@ -1239,7 +1447,8 @@ Page({
     }, () => this.refreshTeamMonths())
   },
 
-  addGear() {
+  async addGear() {
+    if (!this.ensureLogin()) return
     const data = this.data as {
       gearItems: GearItem[]
       gearIconOptions: GearIconOption[]
@@ -1250,12 +1459,12 @@ Page({
     if (!name) return
     const option = data.gearIconOptions[data.selectedGearIconIndex] || data.gearIconOptions[0]
     wx.vibrateShort({ type: 'light' })
-    const next: GearItem = {
-      id: `gear-${Date.now()}`,
+    const res = await this.api<{ gear: any }>('/me/gears', 'POST', {
+      gearTypeId: GEAR_TYPE_BY_LABEL[option.label] || 'gear_quickdraw',
       name,
-      icon: option.icon,
-      count: 1,
-    }
+      quantity: 1,
+    })
+    const next = this.mapApiGear({ ...res.gear, icon: option.icon, count: res.gear.quantity })
     this.setData({
       gearItems: [next, ...data.gearItems],
       newGearName: '',
@@ -1265,34 +1474,43 @@ Page({
     })
   },
 
-  decreaseGear(event: TouchEventLike) {
+  async decreaseGear(event: TouchEventLike) {
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
+    const current = ((this.data as { gearItems: GearItem[] }).gearItems).find((item) => item.id === id)
+    if (!current) return
+    const nextCount = Math.max(0, current.count - 1)
+    await this.api(`/me/gears/${id}`, 'PATCH', { quantity: nextCount })
     const gearItems = ((this.data as { gearItems: GearItem[] }).gearItems).map((item) => {
       if (item.id !== id) return item
-      return { ...item, count: Math.max(0, item.count - 1) }
+      return { ...item, count: nextCount }
     })
     this.setData({ gearItems })
   },
 
-  increaseGear(event: TouchEventLike) {
+  async increaseGear(event: TouchEventLike) {
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
+    const current = ((this.data as { gearItems: GearItem[] }).gearItems).find((item) => item.id === id)
+    if (!current) return
+    const nextCount = current.count + 1
+    await this.api(`/me/gears/${id}`, 'PATCH', { quantity: nextCount })
     const gearItems = ((this.data as { gearItems: GearItem[] }).gearItems).map((item) => {
       if (item.id !== id) return item
-      return { ...item, count: item.count + 1 }
+      return { ...item, count: nextCount }
     })
     this.setData({ gearItems })
   },
 
-  deleteGear(event: TouchEventLike) {
+  async deleteGear(event: TouchEventLike) {
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
+    await this.api(`/me/gears/${id}`, 'DELETE')
     const gearItems = ((this.data as { gearItems: GearItem[] }).gearItems).filter((item) => item.id !== id)
     this.setData({ gearItems })
   },
 
-  saveCreatedEvent() {
+  async saveCreatedEvent() {
     const data = this.data as {
       events: ClimbEvent[]
       teamEvents: TeamCalendarEvent[]
@@ -1306,40 +1524,28 @@ Page({
     const title = data.createTitle.trim()
     if (!title) return
     if (data.createTarget === 'team') {
+      const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
+      if (!selectedTeamId) return
       const start = data.teamSelectingStart < data.teamSelectingEnd ? data.teamSelectingStart : data.teamSelectingEnd
       const end = data.teamSelectingStart < data.teamSelectingEnd ? data.teamSelectingEnd : data.teamSelectingStart
-      const next: TeamCalendarEvent = {
-        id: `TEVT-${Date.now()}`,
-        title,
-        creator: '我',
-        memberId: 'me',
-        start,
-        end,
-        createdAt: Date.now(),
-        color: 'blue',
-        isTeamEvent: true,
-        gearSummary: [],
-      }
+      const currentUserId = (this.data as { currentUserId: string }).currentUserId
+      const participantUserIds = (this.data as { teamMembers: TeamMember[] }).teamMembers
+        .map((member) => member.id)
+        .filter((id) => id !== currentUserId)
+      await this.api(`/teams/${selectedTeamId}/events`, 'POST', { title, startDate: start, endDate: end, participantUserIds })
       this.setData({
-        teamEvents: [...data.teamEvents, next],
         createVisible: false,
         createTitle: '',
         teamSelectingStart: '',
         teamSelectingEnd: '',
-      }, () => this.refreshTeamMonths())
+      })
+      await this.loadTeamEvents(selectedTeamId)
       return
     }
     const start = data.selectingStart < data.selectingEnd ? data.selectingStart : data.selectingEnd
     const end = data.selectingStart < data.selectingEnd ? data.selectingEnd : data.selectingStart
-    const next: ClimbEvent = {
-      id: `EVT-${Date.now()}`,
-      title,
-      creator: '我',
-      start,
-      end,
-      createdAt: Date.now(),
-      color: data.events.length % 2 === 0 ? 'blue' : 'pink',
-    }
+    const res = await this.api<{ event: any }>('/me/events', 'POST', { title, startDate: start, endDate: end })
+    const next = this.mapApiEvent({ ...res.event, type: 'personal' }, data.events.length)
     this.setData({
       events: [...data.events, next],
       createVisible: false,
@@ -1377,7 +1583,7 @@ Page({
     this.setData({ editTitle: event.detail.value })
   },
 
-  saveEditedEvent() {
+  async saveEditedEvent() {
     const data = this.data as {
       events: ClimbEvent[]
       editingEvent: EventPreview | null
@@ -1385,8 +1591,10 @@ Page({
       expandedDate: string
     }
     if (!data.editingEvent) return
+    if (data.editingEvent.eventType && data.editingEvent.eventType !== 'personal') return
     const title = data.editTitle.trim()
     if (!title) return
+    await this.api(`/me/events/${data.editingEvent.id}`, 'PATCH', { title })
     const events = data.events.map((item) => (item.id === data.editingEvent!.id ? { ...item, title } : item))
     this.setData({
       events,
@@ -1396,13 +1604,15 @@ Page({
     }, () => this.refreshMonths())
   },
 
-  deleteEditingEvent() {
+  async deleteEditingEvent() {
     const data = this.data as {
       events: ClimbEvent[]
       editingEvent: EventPreview | null
       expandedDate: string
     }
     if (!data.editingEvent) return
+    if (data.editingEvent.eventType && data.editingEvent.eventType !== 'personal') return
+    await this.api(`/me/events/${data.editingEvent.id}`, 'DELETE')
     const events = data.events.filter((item) => item.id !== data.editingEvent!.id)
     const expandedEvents = sortedEventsForDate(events, data.expandedDate).map((item) => ({ ...item, range: rangeText(item.start, item.end) }))
     this.setData({
@@ -1420,6 +1630,24 @@ Page({
 
   closeEdit() {
     this.setData({ editingEvent: null, editTitle: '' })
+  },
+
+  async acceptEditingEvent() {
+    const editingEvent = (this.data as { editingEvent: EventPreview | null }).editingEvent
+    if (!editingEvent) return
+    await this.api(`/me/events/${editingEvent.id}/accept`, 'POST')
+    this.setData({ editingEvent: null, editTitle: '' })
+    await this.loadCalendarEvents()
+    const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    if (selectedTeamId) await this.loadTeamEvents(selectedTeamId)
+  },
+
+  async rejectEditingEvent() {
+    const editingEvent = (this.data as { editingEvent: EventPreview | null }).editingEvent
+    if (!editingEvent) return
+    await this.api(`/me/events/${editingEvent.id}/reject`, 'POST')
+    this.setData({ editingEvent: null, editTitle: '' })
+    await this.loadCalendarEvents()
   },
 
   noop() {},

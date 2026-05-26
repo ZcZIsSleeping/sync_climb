@@ -185,6 +185,17 @@ app.post('/gear-types', asyncRoute(async (req: AuthedRequest, res) => {
 }));
 
 app.use('/me', requireAuth);
+app.patch('/me/profile', asyncRoute(async (req: AuthedRequest, res) => {
+  const body = z.object({ nickname: z.string().trim().min(1) }).parse(req.body);
+  const result = await pool.query(
+    `UPDATE users SET nickname = $1, updated_at = now()
+     WHERE id = $2
+     RETURNING id, nickname, avatar_url AS "avatarUrl"`,
+    [body.nickname, userId(req)]
+  );
+  res.json({ user: result.rows[0] });
+}));
+
 app.get('/me/gears', asyncRoute(async (req: AuthedRequest, res) => {
   const result = await pool.query(
     `SELECT ug.id, ug.gear_type_id AS "gearTypeId", gt.icon_key AS "iconKey", ug.name, ug.quantity
@@ -432,6 +443,60 @@ app.delete('/teams/:teamId/leave', asyncRoute(async (req: AuthedRequest, res) =>
     );
   });
   res.status(204).end();
+}));
+
+app.patch('/teams/:teamId', asyncRoute(async (req: AuthedRequest, res) => {
+  const body = z.object({ name: z.string().trim().min(1) }).parse(req.body);
+  const uid = userId(req);
+  const teamId = pathParam(req.params.teamId, 'teamId');
+  await assertTeamMember(pool, teamId, uid);
+  const result = await pool.query(
+    `UPDATE teams SET name = $1, updated_at = now()
+     WHERE id = $2
+     RETURNING id, name, avatar_url AS "avatarUrl", room_code AS "roomCode"`,
+    [body.name, teamId]
+  );
+  if (!result.rowCount) throw apiError(404, 'team not found');
+  res.json({ team: result.rows[0] });
+}));
+
+app.get('/teams/:teamId/members', asyncRoute(async (req: AuthedRequest, res) => {
+  const uid = userId(req);
+  const teamId = pathParam(req.params.teamId, 'teamId');
+  await assertTeamMember(pool, teamId, uid);
+
+  const members = await pool.query(
+    `SELECT u.id, u.nickname AS name, u.avatar_url AS "avatarUrl", tm.role
+     FROM team_members tm
+     JOIN users u ON u.id = tm.user_id
+     WHERE tm.team_id = $1 AND tm.left_at IS NULL
+     ORDER BY tm.joined_at ASC`,
+    [teamId]
+  );
+  const gears = await pool.query(
+    `SELECT ug.user_id AS "userId", ug.id, ug.name, ug.quantity AS count, gt.icon_key AS icon, ug.gear_type_id AS "gearTypeId"
+     FROM user_gears ug
+     JOIN gear_types gt ON gt.id = ug.gear_type_id
+     JOIN team_members tm ON tm.user_id = ug.user_id
+     WHERE tm.team_id = $1 AND tm.left_at IS NULL
+     ORDER BY ug.created_at DESC`,
+    [teamId]
+  );
+  const gearByUser = new Map<string, unknown[]>();
+  gears.rows.forEach((gear) => {
+    const list = gearByUser.get(gear.userId) ?? [];
+    list.push(gear);
+    gearByUser.set(gear.userId, list);
+  });
+
+  res.json({
+    members: members.rows.map((member, index) => ({
+      ...member,
+      avatar: member.name.slice(0, 1).toUpperCase(),
+      colorIndex: index,
+      gear: gearByUser.get(member.id) ?? []
+    }))
+  });
 }));
 
 app.get('/teams/:teamId/calendar/events', asyncRoute(async (req: AuthedRequest, res) => {

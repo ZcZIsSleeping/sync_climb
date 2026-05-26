@@ -2,5 +2,6 @@ node_modules/
 server/node_modules/
 server/dist/
 server/.env
+project.private.config.json
 npm-debug.log*
 .DS_Store

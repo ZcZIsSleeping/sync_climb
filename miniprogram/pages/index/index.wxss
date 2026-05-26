@@ -173,7 +173,26 @@ page {
   justify-content: center;
   border-radius: 50%;
   color: #ffffff;
-  background: #4b8fda;
+  background: #d94d4d;
+}
+
+.today-float-button {
+  position: absolute;
+  right: 34rpx;
+  bottom: 132rpx;
+  z-index: 12;
+  width: 76rpx;
+  height: 76rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.64);
+  color: #d94d4d;
+  font-size: 30rpx;
+  font-weight: 900;
+  backdrop-filter: blur(18rpx);
+  box-shadow: 0 18rpx 40rpx rgba(55, 73, 99, 0.18), inset 0 0 0 1rpx rgba(255, 255, 255, 0.7);
 }
 
 .event-layer {
@@ -341,6 +360,24 @@ page {
   border-radius: 28rpx;
   background: rgba(255, 255, 255, 0.76);
   box-shadow: 0 14rpx 36rpx rgba(39, 58, 82, 0.08);
+}
+
+.team-edit-tab {
+  position: absolute;
+  right: 0;
+  top: 64%;
+  z-index: 11;
+  width: 68rpx;
+  height: 108rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 24rpx 0 0 24rpx;
+  background: rgba(213, 233, 253, 0.94);
+  color: #2363a5;
+  font-size: 17rpx;
+  font-weight: 800;
+  box-shadow: 0 14rpx 30rpx rgba(55, 73, 99, 0.1);
 }
 
 .team-card--pinned {
@@ -766,6 +803,23 @@ page {
   font-weight: 800;
 }
 
+.logout-button {
+  width: 112rpx;
+  height: 58rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 999rpx;
+  background: rgba(245, 228, 232, 0.92);
+  color: #9b5264;
+  font-size: 19rpx;
+  font-weight: 800;
+  line-height: 58rpx;
+}
+
+.logout-button::after {
+  border: 0;
+}
+
 .gear-section {
   margin-top: 24rpx;
   padding: 24rpx;
@@ -1070,6 +1124,7 @@ page {
 
 .expanded-backdrop,
 .edit-backdrop,
+.team-edit-backdrop,
 .team-event-backdrop,
 .team-day-preview-backdrop {
   position: fixed;
@@ -1080,7 +1135,8 @@ page {
   animation: backdrop-fade-in 180ms ease-out both;
 }
 
-.team-event-backdrop--closing {
+.team-event-backdrop--closing,
+.team-edit-backdrop--closing {
   animation: backdrop-fade-out 220ms ease-in both;
 }
 
@@ -1169,6 +1225,71 @@ page {
 
 .team-event-detail--closing {
   animation: team-event-shrink 220ms ease-in both;
+}
+
+.team-edit-backdrop {
+  z-index: 34;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  background: rgba(214, 222, 233, 0.38);
+}
+
+.team-edit-panel {
+  width: 590rpx;
+  box-sizing: border-box;
+  margin-right: 0;
+  padding: 22rpx;
+  border: 1rpx solid rgba(127, 143, 164, 0.2);
+  border-radius: 30rpx 0 0 30rpx;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: -18rpx 24rpx 70rpx rgba(38, 54, 78, 0.18);
+  backdrop-filter: blur(28rpx);
+  animation: team-edit-slide-in 260ms cubic-bezier(0.18, 0.88, 0.28, 1.06) both;
+}
+
+.team-edit-panel--closing {
+  animation: team-edit-slide-out 220ms ease-in both;
+}
+
+.team-edit-row {
+  display: grid;
+  grid-template-columns: 5fr 1fr;
+  gap: 10rpx;
+  align-items: center;
+}
+
+.team-edit-input {
+  height: 64rpx;
+  box-sizing: border-box;
+  padding: 0 20rpx;
+  border-radius: 22rpx;
+  background: rgba(246, 249, 252, 0.9);
+  color: #172335;
+  font-size: 20rpx;
+}
+
+.team-edit-join,
+.team-edit-create {
+  height: 64rpx;
+  margin: 0;
+  padding: 0;
+  border-radius: 22rpx;
+  font-size: 19rpx;
+  font-weight: 850;
+  line-height: 64rpx;
+}
+
+.team-edit-join {
+  background: rgba(203, 231, 215, 0.96);
+  color: #437557;
+}
+
+.team-edit-create {
+  width: 100%;
+  margin-top: 12rpx;
+  background: #172335;
+  color: #ffffff;
 }
 
 .team-event-title {
@@ -1699,5 +1820,31 @@ page {
   100% {
     opacity: 0;
     transform: scale(0.24) translateY(80rpx);
+  }
+}
+
+@keyframes team-edit-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  72% {
+    opacity: 1;
+    transform: translateX(-8rpx);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes team-edit-slide-out {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(100%);
   }
 }

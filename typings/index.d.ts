@@ -1,5 +1,15 @@
 declare const wx: {
   getSystemInfoSync(): { windowHeight: number; windowWidth: number }
+  request(options: {
+    url: string
+    method?: string
+    data?: unknown
+    header?: Record<string, string>
+    success?: (res: { statusCode: number; data: unknown }) => void
+    fail?: (error: unknown) => void
+    complete?: () => void
+  }): void
+  showToast(options: { title: string; icon?: 'success' | 'error' | 'loading' | 'none'; duration?: number }): void
   vibrateShort(options?: { type?: 'heavy' | 'medium' | 'light'; success?: () => void; fail?: () => void; complete?: () => void }): void
   setClipboardData(options: { data: string; success?: () => void; fail?: () => void; complete?: () => void }): void
   createSelectorQuery(): {

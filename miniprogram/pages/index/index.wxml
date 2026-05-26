@@ -13,10 +13,12 @@
       class="calendar-scroll"
       scroll-y="{{scrollEnabled}}"
       enhanced="true"
+      scroll-into-view="{{calendarScrollIntoView}}"
       lower-threshold="520"
+      bindscroll="onCalendarScroll"
       bindscrolltolower="onScrollToLower"
     >
-      <view class="month" wx:for="{{months}}" wx:key="key">
+      <view id="month-{{item.key}}" class="month" wx:for="{{months}}" wx:key="key">
         <view class="month-title">{{item.title}}</view>
         <view class="weekday-row">
           <text class="weekday" wx:for="{{weekdays}}" wx:key="*this">{{item}}</text>
@@ -76,6 +78,8 @@
       <view class="scroll-spacer"></view>
     </scroll-view>
 
+    <view wx:if="{{activeTab === 'calendar' && showTodayButton}}" class="today-float-button" bindtap="scrollToTodayMonth">今</view>
+
     <scroll-view wx:if="{{activeTab === 'team' && !selectedTeamId}}" class="team-scroll" scroll-y="true" enhanced="true">
       <view class="team-list">
         <view class="team-card {{item.pinned ? 'team-card--pinned' : ''}}" wx:for="{{teams}}" wx:key="id" data-id="{{item.id}}" bindtap="enterTeam">
@@ -92,10 +96,12 @@
       </view>
     </scroll-view>
 
+    <view wx:if="{{activeTab === 'team' && !selectedTeamId}}" class="team-edit-tab" bindtap="openTeamEditPanel">Edit</view>
+
     <view wx:if="{{activeTab === 'team' && selectedTeamId}}" class="team-detail">
       <view wx:if="{{!teamGearExpanded}}" class="team-detail-head">
         <view class="team-title-row">
-          <input class="team-name-input" value="{{teamName}}" bindinput="onTeamNameInput" />
+          <input class="team-name-input" value="{{teamName}}" bindinput="onTeamNameInput" bindblur="saveTeamName" />
           <view class="room-copy" bindtap="copyRoomNo">
             <text>#{{selectedTeam.roomNo}}</text>
             <text class="room-copy-icon">⧉</text>
@@ -137,8 +143,16 @@
         </view>
       </view>
 
-      <scroll-view class="team-calendar-scroll" scroll-y="{{scrollEnabled}}" enhanced="true" lower-threshold="520" bindscrolltolower="onTeamScrollToLower">
-        <view class="month" wx:for="{{teamMonths}}" wx:key="key">
+      <scroll-view
+        class="team-calendar-scroll"
+        scroll-y="{{scrollEnabled}}"
+        enhanced="true"
+        scroll-into-view="{{teamCalendarScrollIntoView}}"
+        lower-threshold="520"
+        bindscroll="onTeamCalendarScroll"
+        bindscrolltolower="onTeamScrollToLower"
+      >
+        <view id="team-month-{{item.key}}" class="month" wx:for="{{teamMonths}}" wx:key="key">
           <view class="month-title">{{item.title}}</view>
           <view class="weekday-row">
             <text class="weekday" wx:for="{{weekdays}}" wx:key="*this">{{item}}</text>
@@ -194,17 +208,25 @@
         </view>
         <view class="scroll-spacer"></view>
       </scroll-view>
+      <view wx:if="{{showTeamTodayButton}}" class="today-float-button team-today-float-button" bindtap="scrollToTeamTodayMonth">今</view>
     </view>
 
     <scroll-view wx:if="{{activeTab === 'basecamp'}}" class="basecamp-scroll" scroll-y="true" enhanced="true">
       <view class="basecamp-content">
         <view class="profile-panel">
           <view wx:if="{{!loggedIn}}" class="login-empty">
-            <button class="login-button" bindtap="login">点击登录</button>
+            <button
+              class="login-button"
+              wx:for="{{testAccounts}}"
+              wx:key="code"
+              data-index="{{index}}"
+              bindtap="login"
+            >登录 {{item.nickname}}</button>
           </view>
           <view wx:else class="profile-row">
             <view class="avatar">S</view>
-            <input class="nickname-input" value="{{nickname}}" bindinput="onNicknameInput" />
+            <input class="nickname-input" value="{{nickname}}" bindinput="onNicknameInput" bindblur="saveNickname" />
+            <button class="logout-button" bindtap="logout">退出</button>
           </view>
         </view>
 
@@ -358,6 +380,16 @@
     </view>
   </view>
 
+  <view class="team-edit-backdrop {{teamEditClosing ? 'team-edit-backdrop--closing' : ''}}" wx:if="{{teamEditVisible}}" bindtap="closeTeamEditPanel">
+    <view class="team-edit-panel {{teamEditClosing ? 'team-edit-panel--closing' : ''}}" catchtap="noop">
+      <view class="team-edit-row">
+        <input class="team-edit-input" value="{{joinRoomCode}}" placeholder="房间号" bindinput="onJoinRoomInput" />
+        <button class="team-edit-join" bindtap="joinTeam">join</button>
+      </view>
+      <button class="team-edit-create" bindtap="createTeam">Create Team</button>
+    </view>
+  </view>
+
   <view class="create-backdrop" wx:if="{{createVisible}}" bindtap="cancelCreate">
     <view class="create-panel" catchtap="noop">
       <view class="create-header">
@@ -390,7 +422,14 @@
       <text class="edit-heading">编辑事件</text>
       <input class="edit-input" value="{{editTitle}}" focus="true" bindinput="onEditInput" />
       <view class="edit-meta">{{editingEvent.range}} · {{editingEvent.creator}}</view>
-      <view class="edit-actions">
+      <view class="edit-actions" wx:if="{{editingEvent.eventType === 'pending_team'}}">
+        <button class="delete-button" bindtap="rejectEditingEvent">拒绝</button>
+        <button class="primary-button" bindtap="acceptEditingEvent">接受</button>
+      </view>
+      <view class="edit-actions" wx:elif="{{editingEvent.eventType === 'team'}}">
+        <button class="primary-button" bindtap="closeEdit">关闭</button>
+      </view>
+      <view class="edit-actions" wx:else>
         <button class="delete-button" bindtap="deleteEditingEvent">删除</button>
         <button class="primary-button" bindtap="saveEditedEvent">保存</button>
       </view>
