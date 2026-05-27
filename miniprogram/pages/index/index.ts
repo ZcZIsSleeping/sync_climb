@@ -169,7 +169,7 @@ const MONTH_NAMES = [
   'December',
 ]
 
-const API_BASE = 'https://www.synclimb.online'
+const API_BASE = 'http://localhost:8787'
 const COLORS: Array<'blue' | 'pink' | 'green' | 'violet'> = ['blue', 'pink', 'green', 'violet']
 const GEAR_TYPE_BY_LABEL: Record<string, string> = {
   快挂: 'gear_quickdraw',
@@ -724,6 +724,48 @@ Page({
     this.setData({ teamEvents: events }, () => this.refreshTeamMonths())
   },
 
+  async refreshAfterTeamStateChanged(changedTeamId?: string) {
+    if (!this.ensureLogin()) return
+    await Promise.all([
+      this.loadTeams(),
+      this.loadCalendarEvents(),
+    ])
+
+    const data = this.data as {
+      selectedTeamId: string
+      teams: TeamCard[]
+    }
+    const selectedTeamId = data.selectedTeamId
+    if (!selectedTeamId) return
+
+    const selectedTeam = data.teams.find((item) => item.id === selectedTeamId) || null
+    if (!selectedTeam) {
+      this.setData({
+        selectedTeamId: '',
+        selectedTeam: null,
+        teamName: '',
+        teamMembers: [],
+        filteredTeamMembers: [],
+        teamEvents: [],
+        teamGearExpanded: false,
+        teamDetailEvent: null,
+        otherEventPreview: null,
+        teamDayPreviewDate: '',
+        memberGearEditors: [],
+        eventGearDirty: false,
+      }, () => this.refreshTeamMonths())
+      return
+    }
+
+    this.setData({
+      selectedTeam,
+      teamName: selectedTeam.name,
+    })
+    if (!changedTeamId || changedTeamId === selectedTeamId) {
+      await this.loadTeamEvents(selectedTeamId)
+    }
+  },
+
   switchTab(event: TouchEventLike) {
     const tab = String(event.currentTarget.dataset.tab || 'calendar') as TabKey
     if (tab !== 'basecamp' && !this.ensureLogin()) return
@@ -888,13 +930,16 @@ Page({
     this.setData({ teams })
   },
 
-  exitTeam(event: TouchEventLike) {
+  async exitTeam(event: TouchEventLike) {
     if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
-    this.api(`/teams/${id}/leave`, 'DELETE')
-      .then(() => this.loadTeams())
-      .catch(() => this.toast('退出团队失败'))
+    try {
+      await this.api(`/teams/${id}/leave`, 'DELETE')
+      await this.refreshAfterTeamStateChanged(id)
+    } catch (error) {
+      this.toast('退出团队失败')
+    }
   },
 
   onTeamNameInput(event: InputEventLike) {
@@ -935,7 +980,7 @@ Page({
     const name = this.randomTeamName()
     await this.api('/teams', 'POST', { name })
     this.setData({ newTeamName: '' })
-    await this.loadTeams()
+    await this.refreshAfterTeamStateChanged()
     this.closeTeamEditPanel()
   },
 
@@ -945,7 +990,7 @@ Page({
     if (!roomCode) return
     await this.api('/teams/join', 'POST', { roomCode })
     this.setData({ joinRoomCode: '' })
-    await this.loadTeams()
+    await this.refreshAfterTeamStateChanged()
     this.closeTeamEditPanel()
   },
 
@@ -954,7 +999,7 @@ Page({
     const data = this.data as { selectedTeamId: string; teamName: string }
     if (!data.selectedTeamId || !data.teamName.trim()) return
     this.api(`/teams/${data.selectedTeamId}`, 'PATCH', { name: data.teamName.trim() })
-      .then(() => this.loadTeams())
+      .then(() => this.refreshAfterTeamStateChanged(data.selectedTeamId))
       .catch(() => this.toast('团队名保存失败'))
   },
 
@@ -1265,7 +1310,7 @@ Page({
         await this.api(`/teams/${selectedTeamId}/events/${id}/move`, 'PATCH', { startDate: target })
       } catch (error) {
       }
-      await this.loadTeamEvents(selectedTeamId)
+      await this.refreshAfterTeamStateChanged(selectedTeamId)
     }
   },
 
@@ -1838,13 +1883,12 @@ Page({
     wx.vibrateShort({ type: 'light' })
     const teamId = data.teamDetailEvent.teamId || (this.data as { selectedTeamId: string }).selectedTeamId
     if (teamId) await this.api(`/teams/${teamId}/events/${data.teamDetailEvent.id}`, 'DELETE')
-    const teamEvents = data.teamEvents.filter((item) => item.id !== data.teamDetailEvent!.id)
     this.setData({
-      teamEvents,
       teamDetailEvent: null,
       memberGearEditors: [],
       eventGearDirty: false,
-    }, () => this.refreshTeamMonths())
+    })
+    await this.refreshAfterTeamStateChanged(teamId)
   },
 
   async joinTeamDetailEvent() {
@@ -1864,8 +1908,7 @@ Page({
       teamDetailEvent: joinedEvent,
       teamEvents: data.teamEvents.map((item) => (item.id === joinedEvent.id ? { ...item, status: 'joined' } : item)),
     })
-    await this.loadCalendarEvents()
-    if (data.selectedTeamId === teamId) await this.loadTeamEvents(teamId)
+    await this.refreshAfterTeamStateChanged(teamId)
     await this.openTeamEventDetail(joinedEvent, teamId)
   },
 
@@ -1888,8 +1931,7 @@ Page({
       eventGearDirty: false,
       teamEvents: data.teamEvents.map((item) => (item.id === leftEvent.id ? { ...item, status: 'left' } : item)),
     })
-    await this.loadCalendarEvents()
-    if (data.selectedTeamId === teamId) await this.loadTeamEvents(teamId)
+    await this.refreshAfterTeamStateChanged(teamId)
   },
 
   async addGear() {
@@ -1992,8 +2034,7 @@ Page({
         teamSelectingStart: '',
         teamSelectingEnd: '',
       })
-      await this.loadTeamEvents(selectedTeamId)
-      await this.loadCalendarEvents()
+      await this.refreshAfterTeamStateChanged(selectedTeamId)
       return
     }
     const start = data.createStart
@@ -2113,12 +2154,11 @@ Page({
     if (!invite) return
     await this.api(`/me/events/${invite.id}/accept`, 'POST')
     this.setData({ inviteConfirmEvent: null, editingEvent: null, editTitle: '' })
-    await this.loadCalendarEvents()
     const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
     const teamId = invite.teamId || selectedTeamId
     if (teamId) {
       if (selectedTeamId !== teamId) {
-        await this.loadTeams()
+        await this.refreshAfterTeamStateChanged(teamId)
         const team = ((this.data as { teams: TeamCard[] }).teams).find((item) => item.id === teamId) || null
         this.setData({
           activeTab: 'team',
@@ -2130,10 +2170,12 @@ Page({
         })
         await this.loadTeamDetailData(teamId)
       } else {
-        await this.loadTeamEvents(teamId)
+        await this.refreshAfterTeamStateChanged(teamId)
       }
       const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === invite.id)
       if (found) await this.openTeamEventDetail(found)
+    } else {
+      await this.refreshAfterTeamStateChanged()
     }
   },
 
@@ -2143,9 +2185,7 @@ Page({
     if (!invite) return
     await this.api(`/me/events/${invite.id}/reject`, 'POST')
     this.setData({ inviteConfirmEvent: null, editingEvent: null, editTitle: '' })
-    await this.loadCalendarEvents()
-    const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
-    if (invite.teamId && selectedTeamId === invite.teamId) await this.loadTeamEvents(invite.teamId)
+    await this.refreshAfterTeamStateChanged(invite.teamId)
   },
 
   noop() {},
