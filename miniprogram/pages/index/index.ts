@@ -577,9 +577,24 @@ Page({
             resolve(res.data as T)
             return
           }
+          const responseHeader = (res as { header?: Record<string, string> }).header || {}
+          console.error('[api failed]', {
+            path,
+            method,
+            statusCode: res.statusCode,
+            data: res.data,
+            traceId: responseHeader['X-Trace-Id'] || responseHeader['x-trace-id'],
+          })
           reject(new Error(`HTTP ${res.statusCode}`))
         },
-        fail: reject,
+        fail: (error) => {
+          console.error('[api request failed]', {
+            path,
+            method,
+            error,
+          })
+          reject(error)
+        },
       })
     })
   },
@@ -1661,6 +1676,7 @@ Page({
       await this.loadAppData()
       this.toast(`已登录 ${res.user.nickname}`)
     } catch (error) {
+      console.error('[login failed]', error)
       this.toast('微信登录失败')
     }
   },
