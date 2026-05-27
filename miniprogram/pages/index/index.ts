@@ -204,6 +204,10 @@ function addMonths(date: Date, months: number): Date {
   return new Date(date.getFullYear(), date.getMonth() + months, 1)
 }
 
+function avatarTextFromNickname(nickname: string): string {
+  return (nickname.trim() || 'S').slice(0, 1).toUpperCase()
+}
+
 function apiCalendarRange() {
   const now = new Date()
   const start = dateKey(new Date(now.getFullYear(), now.getMonth() - MONTH_HISTORY_WINDOW, 1))
@@ -438,6 +442,8 @@ Page({
     editTitle: '',
     loggedIn: false,
     nickname: '山野同伴',
+    avatarUrl: '',
+    avatarText: avatarTextFromNickname('山野同伴'),
     gearIconOptions: GEAR_ICON_OPTIONS,
     gearIconLabels: GEAR_ICON_OPTIONS.map((item) => item.label),
     selectedGearIconIndex: 0,
@@ -1509,6 +1515,8 @@ Page({
         authToken: res.token,
         currentUserId: res.user.id,
         nickname: res.user.nickname,
+        avatarUrl: res.user.avatarUrl || profile.avatarUrl || '',
+        avatarText: avatarTextFromNickname(res.user.nickname),
       })
       await this.loadAppData()
       this.toast(`已登录 ${res.user.nickname}`)
@@ -1523,6 +1531,8 @@ Page({
       authToken: '',
       currentUserId: '',
       nickname: '山野同伴',
+      avatarUrl: '',
+      avatarText: avatarTextFromNickname('山野同伴'),
       events: [],
       monthStartOffset: INITIAL_MONTH_OFFSET,
       monthCount: INITIAL_MONTH_COUNT,
@@ -1549,7 +1559,14 @@ Page({
   },
 
   onNicknameInput(event: InputEventLike) {
-    this.setData({ nickname: event.detail.value })
+    this.setData({
+      nickname: event.detail.value,
+      avatarText: avatarTextFromNickname(event.detail.value),
+    })
+  },
+
+  onAvatarError() {
+    this.setData({ avatarUrl: '' })
   },
 
   async saveNickname() {

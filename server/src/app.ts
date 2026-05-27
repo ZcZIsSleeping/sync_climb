@@ -198,8 +198,7 @@ app.post('/auth/wechat-login', asyncRoute(async (req, res) => {
      VALUES ($1, $2, $3, $4, $5)
      ON CONFLICT (openid) DO UPDATE
        SET session_token = EXCLUDED.session_token,
-           nickname = EXCLUDED.nickname,
-           avatar_url = EXCLUDED.avatar_url,
+           avatar_url = COALESCE(NULLIF(users.avatar_url, ''), EXCLUDED.avatar_url),
            updated_at = now()
      RETURNING id, nickname, avatar_url`,
     [id('usr'), openid, token, body.nickname, body.avatarUrl]

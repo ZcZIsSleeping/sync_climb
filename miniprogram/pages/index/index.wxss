@@ -826,6 +826,11 @@ page {
   box-shadow: inset 0 0 0 1rpx rgba(255, 255, 255, 0.72), 0 12rpx 28rpx rgba(55, 73, 99, 0.08);
 }
 
+.avatar-image {
+  display: block;
+  background: rgba(246, 249, 252, 0.86);
+}
+
 .nickname-input {
   min-width: 0;
   height: 72rpx;

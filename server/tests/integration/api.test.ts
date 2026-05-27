@@ -32,15 +32,17 @@ async function resetDb() {
   `);
 }
 
-async function login(code: string, nickname: string) {
+async function login(code: string, nickname: string, avatarUrl = '') {
   const response = await request(app)
     .post('/auth/wechat-login')
-    .send({ code, nickname, avatarUrl: '' })
+    .send({ code, nickname, avatarUrl })
     .expect(200);
 
   return {
     token: response.body.token as string,
-    userId: response.body.user.id as string
+    userId: response.body.user.id as string,
+    nickname: response.body.user.nickname as string,
+    avatarUrl: response.body.user.avatarUrl as string
   };
 }
 
@@ -122,6 +124,22 @@ describe('health and auth', () => {
 
     expect(second.userId).toBe(first.userId);
     expect(second.token).not.toBe(first.token);
+    expect(second.nickname).toBe('First');
+  });
+
+  it('does not overwrite edited nicknames on repeated login', async () => {
+    const first = await login('profile-user', 'Wechat Name', 'https://example.com/first.png');
+    await request(app)
+      .patch('/me/profile')
+      .set('authorization', auth(first.token))
+      .send({ nickname: '自定义昵称' })
+      .expect(200);
+
+    const second = await login('profile-user', 'Wechat Name Again', 'https://example.com/second.png');
+
+    expect(second.userId).toBe(first.userId);
+    expect(second.nickname).toBe('自定义昵称');
+    expect(second.avatarUrl).toBe('https://example.com/first.png');
   });
 });
 

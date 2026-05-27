@@ -225,7 +225,8 @@
             >微信登录</button>
           </view>
           <view wx:else class="profile-row">
-            <view class="avatar">S</view>
+            <image wx:if="{{avatarUrl}}" class="avatar avatar-image" src="{{avatarUrl}}" mode="aspectFill" binderror="onAvatarError" />
+            <view wx:else class="avatar">{{avatarText}}</view>
             <input class="nickname-input" value="{{nickname}}" bindinput="onNicknameInput" bindblur="saveNickname" />
             <button class="logout-button" bindtap="logout">退出</button>
           </view>
