@@ -221,11 +221,8 @@
           <view wx:if="{{!loggedIn}}" class="login-empty">
             <button
               class="login-button"
-              wx:for="{{testAccounts}}"
-              wx:key="code"
-              data-index="{{index}}"
               bindtap="login"
-            >登录 {{item.nickname}}</button>
+            >微信登录</button>
           </view>
           <view wx:else class="profile-row">
             <view class="avatar">S</view>

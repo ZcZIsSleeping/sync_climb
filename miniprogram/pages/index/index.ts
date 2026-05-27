@@ -170,11 +170,6 @@ const MONTH_NAMES = [
 ]
 
 const API_BASE = 'https://www.synclimb.online'
-const TEST_ACCOUNTS = [
-  { code: 'alice', nickname: 'Alice' },
-  { code: 'bob', nickname: 'Bob' },
-  { code: 'charlie', nickname: 'Charlie' },
-]
 const COLORS: Array<'blue' | 'pink' | 'green' | 'violet'> = ['blue', 'pink', 'green', 'violet']
 const GEAR_TYPE_BY_LABEL: Record<string, string> = {
   快挂: 'gear_quickdraw',
@@ -422,7 +417,6 @@ Page({
     apiBase: API_BASE,
     authToken: '',
     currentUserId: '',
-    testAccounts: TEST_ACCOUNTS,
     events: [] as ClimbEvent[],
     monthCount: INITIAL_MONTH_COUNT,
     monthStartOffset: INITIAL_MONTH_OFFSET,
@@ -543,6 +537,40 @@ Page({
 
   toast(title: string) {
     wx.showToast({ title, icon: 'none' })
+  },
+
+  wxLogin(): Promise<string> {
+    return new Promise((resolve, reject) => {
+      wx.login({
+        success: (res) => {
+          if (res.code) {
+            resolve(res.code)
+            return
+          }
+          reject(new Error('wx.login missing code'))
+        },
+        fail: reject,
+      })
+    })
+  },
+
+  getWechatProfile(): Promise<{ nickname: string; avatarUrl: string }> {
+    return new Promise((resolve) => {
+      if (!wx.getUserProfile) {
+        resolve({ nickname: '攀登者', avatarUrl: '' })
+        return
+      }
+      wx.getUserProfile({
+        desc: '用于同步攀登计划中的昵称和头像',
+        success: (res) => {
+          resolve({
+            nickname: res.userInfo.nickName || '攀登者',
+            avatarUrl: res.userInfo.avatarUrl || '',
+          })
+        },
+        fail: () => resolve({ nickname: '攀登者', avatarUrl: '' }),
+      })
+    })
   },
 
   mapApiEvent(item: any, index = 0): ClimbEvent {
@@ -1465,14 +1493,16 @@ Page({
     this.setData({ createTitle: event.detail.value })
   },
 
-  async login(event: TouchEventLike) {
-    const index = Number(event.currentTarget.dataset.index || 0)
-    const account = TEST_ACCOUNTS[index] || TEST_ACCOUNTS[0]
+  async login() {
     try {
+      const [code, profile] = await Promise.all([
+        this.wxLogin(),
+        this.getWechatProfile(),
+      ])
       const res = await this.api<{ token: string; user: { id: string; nickname: string; avatarUrl: string } }>('/auth/wechat-login', 'POST', {
-        code: account.code,
-        nickname: account.nickname,
-        avatarUrl: '',
+        code,
+        nickname: profile.nickname,
+        avatarUrl: profile.avatarUrl,
       })
       this.setData({
         loggedIn: true,
@@ -1483,7 +1513,7 @@ Page({
       await this.loadAppData()
       this.toast(`已登录 ${res.user.nickname}`)
     } catch (error) {
-      this.toast('登录失败，请确认后端已启动')
+      this.toast('微信登录失败')
     }
   },
 

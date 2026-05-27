@@ -1,4 +1,15 @@
 declare const wx: {
+  login(options: {
+    success?: (res: { code?: string }) => void
+    fail?: (error: unknown) => void
+    complete?: () => void
+  }): void
+  getUserProfile?(options: {
+    desc: string
+    success?: (res: { userInfo: { nickName?: string; avatarUrl?: string } }) => void
+    fail?: (error: unknown) => void
+    complete?: () => void
+  }): void
   getSystemInfoSync(): { windowHeight: number; windowWidth: number }
   request(options: {
     url: string
