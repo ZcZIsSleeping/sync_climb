@@ -9,9 +9,9 @@
     "start": "node dist/index.js",
     "db:migrate": "tsx src/migrate.ts",
     "db:seed": "tsx src/seed.ts",
-    "test": "DATABASE_URL=postgres://syn_climb:syn_climb@localhost:5432/syn_climb_test vitest run",
-    "test:unit": "DATABASE_URL=postgres://syn_climb:syn_climb@localhost:5432/syn_climb_test vitest run tests/unit",
-    "test:integration": "DATABASE_URL=postgres://syn_climb:syn_climb@localhost:5432/syn_climb_test vitest run tests/integration"
+    "test": "WECHAT_APPID= WECHAT_SECRET= DATABASE_URL=postgres://syn_climb:syn_climb@localhost:5432/syn_climb_test vitest run",
+    "test:unit": "WECHAT_APPID= WECHAT_SECRET= DATABASE_URL=postgres://syn_climb:syn_climb@localhost:5432/syn_climb_test vitest run tests/unit",
+    "test:integration": "WECHAT_APPID= WECHAT_SECRET= DATABASE_URL=postgres://syn_climb:syn_climb@localhost:5432/syn_climb_test vitest run tests/integration"
   },
   "dependencies": {
     "cors": "^2.8.5",
