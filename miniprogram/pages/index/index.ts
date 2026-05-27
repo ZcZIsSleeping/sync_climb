@@ -169,7 +169,7 @@ const MONTH_NAMES = [
   'December',
 ]
 
-const API_BASE = 'http://localhost:8787'
+const API_BASE = 'https://www.synclimb.online'
 const COLORS: Array<'blue' | 'pink' | 'green' | 'violet'> = ['blue', 'pink', 'green', 'violet']
 const GEAR_TYPE_BY_LABEL: Record<string, string> = {
   快挂: 'gear_quickdraw',
