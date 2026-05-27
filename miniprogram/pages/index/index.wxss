@@ -1495,18 +1495,34 @@ page {
   font-size: 19rpx;
 }
 
-.team-event-delete {
-  width: 220rpx;
+.team-event-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 18rpx;
+}
+
+.team-event-delete,
+.team-event-join-action,
+.team-event-leave-action {
+  min-width: 220rpx;
   display: flex;
   align-items: center;
   justify-content: center;
-  margin: 18rpx auto 0;
   padding: 12rpx 22rpx;
   border-radius: 999rpx;
-  background: rgba(245, 228, 232, 0.92);
-  color: #9b5264;
   font-size: 18rpx;
   font-weight: 750;
+}
+
+.team-event-delete,
+.team-event-leave-action {
+  background: rgba(245, 228, 232, 0.92);
+  color: #9b5264;
+}
+
+.team-event-join-action {
+  background: rgba(219, 239, 226, 0.94);
+  color: #2f7d50;
 }
 
 .participant-editor {

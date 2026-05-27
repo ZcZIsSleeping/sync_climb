@@ -599,6 +599,9 @@ app.get('/teams/:teamId/events/:eventId', asyncRoute(async (req: AuthedRequest, 
             gt.icon_key AS "iconKey",
             egr.quantity
      FROM event_gear_requirements egr
+     JOIN event_participants ep ON ep.event_id = egr.event_id
+       AND ep.user_id = egr.participant_user_id
+       AND ep.status = 'joined'
      JOIN gear_types gt ON gt.id = egr.gear_type_id
      JOIN user_gears ug ON ug.id = egr.user_gear_id
      WHERE egr.event_id = $1 AND egr.quantity > 0
@@ -608,6 +611,9 @@ app.get('/teams/:teamId/events/:eventId', asyncRoute(async (req: AuthedRequest, 
   const summary = await pool.query(
     `SELECT egr.gear_type_id AS "gearTypeId", gt.name, gt.icon_key AS "iconKey", sum(egr.quantity)::int AS quantity
      FROM event_gear_requirements egr
+     JOIN event_participants ep ON ep.event_id = egr.event_id
+       AND ep.user_id = egr.participant_user_id
+       AND ep.status = 'joined'
      JOIN gear_types gt ON gt.id = egr.gear_type_id
      WHERE egr.event_id = $1 AND egr.quantity > 0
      GROUP BY egr.gear_type_id, gt.name, gt.icon_key
@@ -645,17 +651,29 @@ app.post('/teams/:teamId/events/:eventId/join', asyncRoute(async (req: AuthedReq
 }));
 
 app.post('/teams/:teamId/events/:eventId/leave', asyncRoute(async (req: AuthedRequest, res) => {
+  const uid = userId(req);
   const teamId = pathParam(req.params.teamId, 'teamId');
   const eventId = pathParam(req.params.eventId, 'eventId');
-  const result = await pool.query(
-    `UPDATE event_participants
-     SET status = 'left', updated_at = now()
-     WHERE event_id = $1 AND user_id = $2 AND team_id = $3
-     RETURNING *`,
-    [eventId, userId(req), teamId]
-  );
-  if (!result.rowCount) throw apiError(404, 'participant not found');
-  res.json({ participant: result.rows[0] });
+  const participant = await tx(async (client) => {
+    await assertTeamMember(client, teamId, uid);
+    const event = await assertTeamEvent(client, teamId, eventId);
+    if (event.creator_user_id === uid) throw apiError(400, 'creator cannot leave own event');
+    const result = await client.query(
+      `UPDATE event_participants
+       SET status = 'left', updated_at = now()
+       WHERE event_id = $1 AND user_id = $2 AND team_id = $3 AND status = 'joined'
+       RETURNING *`,
+      [eventId, uid, teamId]
+    );
+    if (!result.rowCount) throw apiError(404, 'participant not found');
+    await client.query(
+      `DELETE FROM event_gear_requirements
+       WHERE event_id = $1 AND participant_user_id = $2`,
+      [eventId, uid]
+    );
+    return result.rows[0];
+  });
+  res.json({ participant });
 }));
 
 app.patch('/teams/:teamId/events/:eventId', asyncRoute(async (req: AuthedRequest, res) => {
@@ -767,6 +785,9 @@ app.patch('/teams/:teamId/events/:eventId/gear-requirements', asyncRoute(async (
     const result = await client.query(
       `SELECT egr.gear_type_id AS "gearTypeId", gt.name, gt.icon_key AS "iconKey", sum(egr.quantity)::int AS quantity
        FROM event_gear_requirements egr
+       JOIN event_participants ep ON ep.event_id = egr.event_id
+         AND ep.user_id = egr.participant_user_id
+         AND ep.status = 'joined'
        JOIN gear_types gt ON gt.id = egr.gear_type_id
        WHERE egr.event_id = $1 AND egr.quantity > 0
        GROUP BY egr.gear_type_id, gt.name, gt.icon_key

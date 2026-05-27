@@ -381,9 +381,25 @@
           </view>
         </view>
       </view>
-      <view class="team-event-delete" bindtap="deleteTeamEvent">删除团队事件</view>
+      <view class="team-event-actions">
+        <view
+          wx:if="{{teamDetailEvent.creatorUserId === currentUserId}}"
+          class="team-event-delete"
+          bindtap="deleteTeamEvent"
+        >删除团队事件</view>
+        <view
+          wx:elif="{{teamDetailEvent.status !== 'joined'}}"
+          class="team-event-join-action"
+          bindtap="joinTeamDetailEvent"
+        >加入事件</view>
+        <view
+          wx:elif="{{teamDetailEvent.creatorUserId !== currentUserId}}"
+          class="team-event-leave-action"
+          bindtap="leaveTeamDetailEvent"
+        >退出事件</view>
+      </view>
 
-      <view class="participant-editor">
+      <view class="participant-editor" wx:if="{{teamDetailEvent.status === 'joined'}}">
         <view class="participant-block" wx:for="{{memberGearEditors}}" wx:for-item="editor" wx:key="member.id">
           <view class="participant-head" data-id="{{editor.member.id}}" bindtap="toggleMemberGear">
             <view class="member-avatar member-avatar--{{editor.member.color}}">{{editor.member.avatar}}</view>

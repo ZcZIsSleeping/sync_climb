@@ -1029,6 +1029,7 @@ Page({
     const teamId = explicitTeamId || found.teamId || (this.data as { selectedTeamId: string }).selectedTeamId
     if (!teamId) return
     const detail = await this.api<{
+      event: { status?: string; creatorUserId?: string; creatorName?: string }
       gearSummary: any[]
       participants: Array<{ userId: string }>
       requirements: EventGearRequirement[]
@@ -1036,6 +1037,9 @@ Page({
     const eventWithGear = {
       ...found,
       teamId,
+      status: detail.event.status || found.status,
+      creatorUserId: detail.event.creatorUserId || found.creatorUserId,
+      creator: detail.event.creatorName || found.creator,
       gearSummary: (detail.gearSummary || []).map((item) => this.mapApiGear({ ...item, id: item.gearTypeId, count: item.quantity })),
     }
     this.setData({
@@ -1721,6 +1725,49 @@ Page({
       memberGearEditors: [],
       eventGearDirty: false,
     }, () => this.refreshTeamMonths())
+  },
+
+  async joinTeamDetailEvent() {
+    const data = this.data as {
+      teamDetailEvent: TeamCalendarEvent | null
+      teamEvents: TeamCalendarEvent[]
+      selectedTeamId: string
+    }
+    if (!data.teamDetailEvent) return
+    const teamId = data.teamDetailEvent.teamId || data.selectedTeamId
+    if (!teamId) return
+    wx.vibrateShort({ type: 'light' })
+    await this.api(`/teams/${teamId}/events/${data.teamDetailEvent.id}/join`, 'POST')
+    const joinedEvent = { ...data.teamDetailEvent, status: 'joined' }
+    this.setData({
+      teamDetailEvent: joinedEvent,
+      teamEvents: data.teamEvents.map((item) => (item.id === joinedEvent.id ? { ...item, status: 'joined' } : item)),
+    })
+    await this.loadCalendarEvents()
+    if (data.selectedTeamId === teamId) await this.loadTeamEvents(teamId)
+    await this.openTeamEventDetail(joinedEvent, teamId)
+  },
+
+  async leaveTeamDetailEvent() {
+    const data = this.data as {
+      teamDetailEvent: TeamCalendarEvent | null
+      teamEvents: TeamCalendarEvent[]
+      selectedTeamId: string
+    }
+    if (!data.teamDetailEvent) return
+    const teamId = data.teamDetailEvent.teamId || data.selectedTeamId
+    if (!teamId) return
+    wx.vibrateShort({ type: 'light' })
+    await this.api(`/teams/${teamId}/events/${data.teamDetailEvent.id}/leave`, 'POST')
+    const leftEvent = { ...data.teamDetailEvent, status: 'left', gearSummary: [] }
+    this.setData({
+      teamDetailEvent: null,
+      memberGearEditors: [],
+      eventGearDirty: false,
+      teamEvents: data.teamEvents.map((item) => (item.id === leftEvent.id ? { ...item, status: 'left' } : item)),
+    })
+    await this.loadCalendarEvents()
+    if (data.selectedTeamId === teamId) await this.loadTeamEvents(teamId)
   },
 
   async addGear() {
