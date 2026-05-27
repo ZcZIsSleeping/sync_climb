@@ -444,6 +444,8 @@ Page({
     nickname: '山野同伴',
     avatarUrl: '',
     avatarText: avatarTextFromNickname('山野同伴'),
+    loginPhone: '',
+    loginPassword: '',
     gearIconOptions: GEAR_ICON_OPTIONS,
     gearIconLabels: GEAR_ICON_OPTIONS.map((item) => item.label),
     selectedGearIconIndex: 0,
@@ -631,7 +633,7 @@ Page({
 
   ensureLogin(): boolean {
     if ((this.data as { authToken: string }).authToken) return true
-    this.toast('请先登录测试账号')
+    this.toast('请先登录')
     return false
   },
 
@@ -1500,28 +1502,35 @@ Page({
   },
 
   async login() {
+    const data = this.data as { loginPhone: string; loginPassword: string }
+    const phone = data.loginPhone.trim()
+    const password = data.loginPassword
+    if (!/^1\d{10}$/.test(phone)) {
+      this.toast('请输入正确手机号')
+      return
+    }
+    if (password.length < 6) {
+      this.toast('密码至少6位')
+      return
+    }
     try {
-      const [code, profile] = await Promise.all([
-        this.wxLogin(),
-        this.getWechatProfile(),
-      ])
-      const res = await this.api<{ token: string; user: { id: string; nickname: string; avatarUrl: string } }>('/auth/wechat-login', 'POST', {
-        code,
-        nickname: profile.nickname,
-        avatarUrl: profile.avatarUrl,
+      const loginRes = await this.api<{ token: string; user: { id: string; nickname: string; avatarUrl: string } }>('/auth/phone-login', 'POST', {
+        phone,
+        password,
       })
       this.setData({
         loggedIn: true,
-        authToken: res.token,
-        currentUserId: res.user.id,
-        nickname: res.user.nickname,
-        avatarUrl: res.user.avatarUrl || profile.avatarUrl || '',
-        avatarText: avatarTextFromNickname(res.user.nickname),
+        authToken: loginRes.token,
+        currentUserId: loginRes.user.id,
+        nickname: loginRes.user.nickname,
+        avatarUrl: loginRes.user.avatarUrl || '',
+        avatarText: avatarTextFromNickname(loginRes.user.nickname),
+        loginPassword: '',
       })
       await this.loadAppData()
-      this.toast(`已登录 ${res.user.nickname}`)
+      this.toast(`已登录 ${loginRes.user.nickname}`)
     } catch (error) {
-      this.toast('微信登录失败')
+      this.toast('手机号或密码错误')
     }
   },
 
@@ -1533,6 +1542,7 @@ Page({
       nickname: '山野同伴',
       avatarUrl: '',
       avatarText: avatarTextFromNickname('山野同伴'),
+      loginPassword: '',
       events: [],
       monthStartOffset: INITIAL_MONTH_OFFSET,
       monthCount: INITIAL_MONTH_COUNT,
@@ -1563,6 +1573,14 @@ Page({
       nickname: event.detail.value,
       avatarText: avatarTextFromNickname(event.detail.value),
     })
+  },
+
+  onLoginPhoneInput(event: InputEventLike) {
+    this.setData({ loginPhone: event.detail.value })
+  },
+
+  onLoginPasswordInput(event: InputEventLike) {
+    this.setData({ loginPassword: event.detail.value })
   },
 
   onAvatarError() {

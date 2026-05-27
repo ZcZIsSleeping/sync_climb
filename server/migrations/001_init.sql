@@ -1,12 +1,17 @@
 CREATE TABLE IF NOT EXISTS users (
   id TEXT PRIMARY KEY,
   openid TEXT NOT NULL UNIQUE,
+  phone TEXT UNIQUE,
+  password_hash TEXT,
   session_token TEXT NOT NULL UNIQUE,
   nickname TEXT NOT NULL,
   avatar_url TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE users ADD COLUMN IF NOT EXISTS phone TEXT UNIQUE;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_hash TEXT;
 
 CREATE TABLE IF NOT EXISTS gear_types (
   id TEXT PRIMARY KEY,

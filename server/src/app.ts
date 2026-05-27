@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import cors from 'cors';
+import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
 import express from 'express';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
@@ -34,6 +35,8 @@ const idText = z.string().trim().min(1).max(64);
 const authCode = text(128);
 const avatarUrl = optionalText(512);
 const nickname = text(20);
+const phoneNumber = z.string().trim().regex(/^1\d{10}$/);
+const password = z.string().min(6).max(64);
 const eventTitle = text(50);
 const teamName = text(30);
 const gearName = text(30);
@@ -55,6 +58,20 @@ function apiError(status: number, message: string) {
   const error = new Error(message) as Error & { status?: number };
   error.status = status;
   return error;
+}
+
+function hashPassword(rawPassword: string): string {
+  const salt = randomBytes(16).toString('hex');
+  const hash = scryptSync(rawPassword, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+}
+
+function verifyPassword(rawPassword: string, stored: string): boolean {
+  const [salt, hash] = stored.split(':');
+  if (!salt || !hash) return false;
+  const expected = Buffer.from(hash, 'hex');
+  const actual = scryptSync(rawPassword, salt, expected.length);
+  return expected.length === actual.length && timingSafeEqual(expected, actual);
 }
 
 async function requireAuth(req: AuthedRequest, _res: express.Response, next: express.NextFunction) {
@@ -205,6 +222,58 @@ app.post('/auth/wechat-login', asyncRoute(async (req, res) => {
   );
 
   res.json({
+    token,
+    user: {
+      id: result.rows[0].id,
+      nickname: result.rows[0].nickname,
+      avatarUrl: result.rows[0].avatar_url
+    }
+  });
+}));
+
+app.post('/auth/phone-login', asyncRoute(async (req, res) => {
+  const body = z.object({
+    phone: phoneNumber,
+    password
+  }).parse(req.body);
+
+  const token = id('sess');
+  const existing = await pool.query(
+    'SELECT id, nickname, avatar_url, password_hash FROM users WHERE phone = $1',
+    [body.phone]
+  );
+
+  if (existing.rowCount) {
+    const user = existing.rows[0];
+    if (!user.password_hash || !verifyPassword(body.password, user.password_hash)) {
+      throw apiError(401, 'invalid phone or password');
+    }
+    const result = await pool.query(
+      `UPDATE users
+       SET session_token = $1, updated_at = now()
+       WHERE id = $2
+       RETURNING id, nickname, avatar_url`,
+      [token, user.id]
+    );
+    res.json({
+      token,
+      user: {
+        id: result.rows[0].id,
+        nickname: result.rows[0].nickname,
+        avatarUrl: result.rows[0].avatar_url
+      }
+    });
+    return;
+  }
+
+  const result = await pool.query(
+    `INSERT INTO users (id, openid, phone, password_hash, session_token, nickname, avatar_url)
+     VALUES ($1, $2, $3, $4, $5, $6, '')
+     RETURNING id, nickname, avatar_url`,
+    [id('usr'), `phone_${body.phone}`, body.phone, hashPassword(body.password), token, `用户${body.phone.slice(-4)}`]
+  );
+
+  res.status(201).json({
     token,
     user: {
       id: result.rows[0].id,

@@ -784,7 +784,18 @@ page {
 .login-empty {
   width: 100%;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: 16rpx;
+}
+
+.login-input {
+  height: 68rpx;
+  box-sizing: border-box;
+  padding: 0 24rpx;
+  border-radius: 24rpx;
+  background: rgba(246, 249, 252, 0.86);
+  color: #172335;
+  font-size: 24rpx;
 }
 
 .login-button {

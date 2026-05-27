@@ -219,10 +219,26 @@
       <view class="basecamp-content">
         <view class="profile-panel">
           <view wx:if="{{!loggedIn}}" class="login-empty">
+            <input
+              class="login-input"
+              type="number"
+              maxlength="11"
+              placeholder="手机号"
+              value="{{loginPhone}}"
+              bindinput="onLoginPhoneInput"
+            />
+            <input
+              class="login-input"
+              password="true"
+              maxlength="64"
+              placeholder="密码"
+              value="{{loginPassword}}"
+              bindinput="onLoginPasswordInput"
+            />
             <button
               class="login-button"
               bindtap="login"
-            >微信登录</button>
+            >登录 / 新增</button>
           </view>
           <view wx:else class="profile-row">
             <image wx:if="{{avatarUrl}}" class="avatar avatar-image" src="{{avatarUrl}}" mode="aspectFill" binderror="onAvatarError" />

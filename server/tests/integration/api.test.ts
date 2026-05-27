@@ -141,6 +141,33 @@ describe('health and auth', () => {
     expect(second.nickname).toBe('自定义昵称');
     expect(second.avatarUrl).toBe('https://example.com/first.png');
   });
+
+  it('creates phone accounts and rejects mismatched passwords', async () => {
+    const created = await request(app)
+      .post('/auth/phone-login')
+      .send({ phone: '13800138000', password: 'secret123' })
+      .expect(201);
+
+    expect(created.body.token).toEqual(expect.stringMatching(/^sess_/));
+    expect(created.body.user.nickname).toBe('用户8000');
+
+    const repeated = await request(app)
+      .post('/auth/phone-login')
+      .send({ phone: '13800138000', password: 'secret123' })
+      .expect(200);
+
+    expect(repeated.body.user.id).toBe(created.body.user.id);
+    expect(repeated.body.token).not.toBe(created.body.token);
+
+    await request(app)
+      .post('/auth/phone-login')
+      .send({ phone: '13800138000', password: 'wrong123' })
+      .expect(401);
+
+    const stored = await pool.query('SELECT phone, password_hash FROM users WHERE id = $1', [created.body.user.id]);
+    expect(stored.rows[0].phone).toBe('13800138000');
+    expect(stored.rows[0].password_hash).not.toContain('secret123');
+  });
 });
 
 describe('input validation limits', () => {
