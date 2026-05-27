@@ -542,9 +542,25 @@ Page({
 
   onLoad() {
     this.setupSafeArea()
+    this.printDebugLoginLogExample()
     this.refreshMonths()
     this.refreshTeamMonths()
     setTimeout(() => this.scrollToTodayMonth(), 80)
+  },
+
+  printDebugLoginLogExample() {
+    console.error('[login debug example]', {
+      path: '/auth/wechat-login',
+      method: 'POST',
+      statusCode: 502,
+      data: {
+        error: 'INTERNAL_ERROR',
+        message: '服务暂时不可用',
+        traceId: 'trc_example_123456',
+      },
+      traceId: 'trc_example_123456',
+      note: '示例日志：真实登录失败时请截图 [api failed] 和 [login failed]',
+    })
   },
 
   setupSafeArea() {
