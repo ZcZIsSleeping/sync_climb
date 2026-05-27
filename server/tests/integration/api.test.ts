@@ -2,7 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import request from 'supertest';
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { app } from '../../src/app.js';
 import { pool } from '../../src/db.js';
 
@@ -45,14 +45,26 @@ async function login(code: string, nickname: string) {
 }
 
 const auth = (token: string) => `Bearer ${token}`;
+let consoleErrorSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(async () => {
+  consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
   await resetDb();
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 afterAll(async () => {
   await pool.end();
 });
+
+function lastErrorLog() {
+  const calls = consoleErrorSpy.mock.calls;
+  expect(calls.length).toBeGreaterThan(0);
+  return JSON.parse(String(calls[calls.length - 1][0])) as Record<string, unknown>;
+}
 
 describe('health and auth', () => {
   it('responds to health checks and protects authenticated routes', async () => {
@@ -64,12 +76,88 @@ describe('health and auth', () => {
     expect(gearTypes.body.gearTypes).toHaveLength(4);
   });
 
+  it('returns safe errors with trace ids and logs original error context', async () => {
+    const validation = await request(app)
+      .post('/auth/wechat-login')
+      .send({ code: 'x'.repeat(129), nickname: 'Alice', avatarUrl: '' })
+      .expect(400);
+    expect(validation.body).toEqual({
+      error: 'VALIDATION_ERROR',
+      message: '请求参数不合法',
+      traceId: expect.stringMatching(/^trc_/)
+    });
+    expect(validation.body.details).toBeUndefined();
+    expect(validation.headers['x-trace-id']).toBe(validation.body.traceId);
+    const validationLog = lastErrorLog();
+    expect(validationLog.traceId).toBe(validation.body.traceId);
+    expect(validationLog.errorMessage).toContain('Too big');
+    expect(validationLog.validationIssues).toBeTruthy();
+
+    const missingTeam = await request(app)
+      .post('/auth/wechat-login')
+      .send({ code: 'safe-error-user', nickname: 'Alice', avatarUrl: '' })
+      .expect(200)
+      .then((loginResponse) => (
+        request(app)
+          .post('/teams/join')
+          .set('authorization', auth(loginResponse.body.token))
+          .send({ roomCode: 'ABCDEF' })
+          .expect(404)
+      ));
+    expect(missingTeam.body).toEqual({
+      error: 'NOT_FOUND',
+      message: '资源不存在',
+      traceId: expect.stringMatching(/^trc_/)
+    });
+    expect(missingTeam.body.error).not.toBe('team not found');
+    expect(missingTeam.headers['x-trace-id']).toBe(missingTeam.body.traceId);
+    const businessLog = lastErrorLog();
+    expect(businessLog.traceId).toBe(missingTeam.body.traceId);
+    expect(businessLog.errorMessage).toBe('team not found');
+  });
+
   it('reuses the same local openid while rotating the token', async () => {
     const first = await login('same-user', 'First');
     const second = await login('same-user', 'Second');
 
     expect(second.userId).toBe(first.userId);
     expect(second.token).not.toBe(first.token);
+  });
+});
+
+describe('input validation limits', () => {
+  it('rejects strings that exceed business limits', async () => {
+    const alice = await login('alice-validation', 'Alice');
+
+    await request(app)
+      .patch('/me/profile')
+      .set('authorization', auth(alice.token))
+      .send({ nickname: '山'.repeat(21) })
+      .expect(400);
+
+    await request(app)
+      .post('/me/events')
+      .set('authorization', auth(alice.token))
+      .send({ title: '训'.repeat(51), startDate: '2025-05-01', endDate: '2025-05-01' })
+      .expect(400);
+
+    await request(app)
+      .post('/teams')
+      .set('authorization', auth(alice.token))
+      .send({ name: '队'.repeat(31) })
+      .expect(400);
+
+    await request(app)
+      .post('/me/gears')
+      .set('authorization', auth(alice.token))
+      .send({ gearTypeId: 'gear_rope', name: '绳'.repeat(31), quantity: 1 })
+      .expect(400);
+
+    await request(app)
+      .post('/teams/join')
+      .set('authorization', auth(alice.token))
+      .send({ roomCode: 'TOO-LONG' })
+      .expect(400);
   });
 });
 

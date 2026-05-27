@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { pool, tx, type DbClient } from './db.js';
 
 type AuthedRequest = express.Request & {
+  traceId?: string;
   user?: {
     id: string;
     openid: string;
@@ -18,14 +19,32 @@ const app = express();
 
 app.use(cors());
 app.use(express.json());
+app.use((req: AuthedRequest, res, next) => {
+  const traceId = `trc_${nanoid(12)}`;
+  req.traceId = traceId;
+  res.setHeader('X-Trace-Id', traceId);
+  next();
+});
 
 const id = (prefix: string) => `${prefix}_${nanoid(12)}`;
 const roomCode = () => nanoid(6).toUpperCase().replace(/[-_]/g, 'A');
+const text = (max: number) => z.string().trim().min(1).max(max);
+const optionalText = (max: number) => z.string().trim().max(max).default('');
+const idText = z.string().trim().min(1).max(64);
+const authCode = text(128);
+const avatarUrl = optionalText(512);
+const nickname = text(20);
+const eventTitle = text(50);
+const teamName = text(30);
+const gearName = text(30);
+const iconKey = text(8);
+const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const roomCodeInput = z.string().trim().length(6).transform((value) => value.toUpperCase());
 
 const dateBody = z.object({
-  title: z.string().trim().min(1),
-  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+  title: eventTitle,
+  startDate: dateString,
+  endDate: dateString
 });
 
 function asyncRoute(handler: express.RequestHandler): express.RequestHandler {
@@ -58,8 +77,9 @@ function userId(req: AuthedRequest) {
 }
 
 function pathParam(value: string | string[] | undefined, name: string) {
-  if (typeof value !== 'string' || value.length === 0) throw apiError(400, `missing path param: ${name}`);
-  return value;
+  const parsed = idText.safeParse(value);
+  if (!parsed.success) throw apiError(400, `invalid path param: ${name}`);
+  return parsed.data;
 }
 
 async function getOpenid(code: string) {
@@ -126,15 +146,49 @@ function mapEventRow(row: Record<string, unknown>) {
   };
 }
 
+function errorCodeForStatus(status: number) {
+  if (status === 400) return 'BAD_REQUEST';
+  if (status === 401) return 'UNAUTHORIZED';
+  if (status === 403) return 'FORBIDDEN';
+  if (status === 404) return 'NOT_FOUND';
+  if (status === 409) return 'CONFLICT';
+  return 'INTERNAL_ERROR';
+}
+
+function errorMessageForStatus(status: number) {
+  if (status === 400) return '请求无法处理';
+  if (status === 401) return '请先登录';
+  if (status === 403) return '没有操作权限';
+  if (status === 404) return '资源不存在';
+  if (status === 409) return '资源状态冲突';
+  return '服务暂时不可用';
+}
+
+function logError(error: Error & { status?: number }, req: AuthedRequest, status: number, validationIssues?: unknown) {
+  console.error(JSON.stringify({
+    level: 'error',
+    traceId: req.traceId,
+    status,
+    method: req.method,
+    path: req.originalUrl,
+    userId: req.user?.id,
+    errorName: error.name,
+    errorMessage: error.message,
+    stack: error.stack,
+    validationIssues,
+    timestamp: new Date().toISOString()
+  }));
+}
+
 app.get('/health', (_req, res) => {
   res.json({ ok: true });
 });
 
 app.post('/auth/wechat-login', asyncRoute(async (req, res) => {
   const body = z.object({
-    code: z.string().trim().min(1),
-    nickname: z.string().trim().default('攀登者'),
-    avatarUrl: z.string().trim().default('')
+    code: authCode,
+    nickname: nickname.default('攀登者'),
+    avatarUrl
   }).parse(req.body);
 
   const openid = await getOpenid(body.code);
@@ -171,8 +225,8 @@ app.get('/gear-types', asyncRoute(async (_req, res) => {
 
 app.post('/gear-types', asyncRoute(async (req: AuthedRequest, res) => {
   const body = z.object({
-    name: z.string().trim().min(1),
-    iconKey: z.string().trim().min(1).max(8)
+    name: gearName,
+    iconKey
   }).parse(req.body);
 
   const result = await pool.query(
@@ -186,7 +240,7 @@ app.post('/gear-types', asyncRoute(async (req: AuthedRequest, res) => {
 
 app.use('/me', requireAuth);
 app.patch('/me/profile', asyncRoute(async (req: AuthedRequest, res) => {
-  const body = z.object({ nickname: z.string().trim().min(1) }).parse(req.body);
+  const body = z.object({ nickname }).parse(req.body);
   const result = await pool.query(
     `UPDATE users SET nickname = $1, updated_at = now()
      WHERE id = $2
@@ -210,8 +264,8 @@ app.get('/me/gears', asyncRoute(async (req: AuthedRequest, res) => {
 
 app.post('/me/gears', asyncRoute(async (req: AuthedRequest, res) => {
   const body = z.object({
-    gearTypeId: z.string().trim().min(1),
-    name: z.string().trim().min(1),
+    gearTypeId: idText,
+    name: gearName,
     quantity: z.number().int().min(0).default(1)
   }).parse(req.body);
 
@@ -226,7 +280,7 @@ app.post('/me/gears', asyncRoute(async (req: AuthedRequest, res) => {
 
 app.patch('/me/gears/:gearId', asyncRoute(async (req: AuthedRequest, res) => {
   const body = z.object({
-    name: z.string().trim().min(1).optional(),
+    name: gearName.optional(),
     quantity: z.number().int().min(0).optional()
   }).parse(req.body);
   if (body.name === undefined && body.quantity === undefined) throw apiError(400, 'nothing to update');
@@ -253,8 +307,8 @@ app.delete('/me/gears/:gearId', asyncRoute(async (req: AuthedRequest, res) => {
 
 app.get('/me/calendar/events', asyncRoute(async (req: AuthedRequest, res) => {
   const query = z.object({
-    start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/)
+    start: dateString,
+    end: dateString
   }).parse(req.query);
 
   const result = await pool.query(
@@ -303,7 +357,7 @@ app.post('/me/events', asyncRoute(async (req: AuthedRequest, res) => {
 }));
 
 app.patch('/me/events/:eventId', asyncRoute(async (req: AuthedRequest, res) => {
-  const body = z.object({ title: z.string().trim().min(1) }).parse(req.body);
+  const body = z.object({ title: eventTitle }).parse(req.body);
   const result = await pool.query(
     `UPDATE events
      SET title = $1, updated_at = now()
@@ -316,7 +370,7 @@ app.patch('/me/events/:eventId', asyncRoute(async (req: AuthedRequest, res) => {
 }));
 
 app.patch('/me/events/:eventId/move', asyncRoute(async (req: AuthedRequest, res) => {
-  const body = z.object({ startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.body);
+  const body = z.object({ startDate: dateString }).parse(req.body);
   const result = await pool.query(
     `UPDATE events
      SET start_date = $1::date,
@@ -386,7 +440,7 @@ app.get('/teams', asyncRoute(async (req: AuthedRequest, res) => {
 }));
 
 app.post('/teams', asyncRoute(async (req: AuthedRequest, res) => {
-  const body = z.object({ name: z.string().trim().min(1) }).parse(req.body);
+  const body = z.object({ name: teamName }).parse(req.body);
   const uid = userId(req);
   const team = await tx(async (client) => {
     const teamResult = await client.query(
@@ -406,7 +460,7 @@ app.post('/teams', asyncRoute(async (req: AuthedRequest, res) => {
 }));
 
 app.post('/teams/join', asyncRoute(async (req: AuthedRequest, res) => {
-  const body = z.object({ roomCode: z.string().trim().min(1) }).parse(req.body);
+  const body = z.object({ roomCode: roomCodeInput }).parse(req.body);
   const uid = userId(req);
   const result = await tx(async (client) => {
     const teamResult = await client.query('SELECT id, name, room_code AS "roomCode" FROM teams WHERE room_code = $1', [
@@ -446,7 +500,7 @@ app.delete('/teams/:teamId/leave', asyncRoute(async (req: AuthedRequest, res) =>
 }));
 
 app.patch('/teams/:teamId', asyncRoute(async (req: AuthedRequest, res) => {
-  const body = z.object({ name: z.string().trim().min(1) }).parse(req.body);
+  const body = z.object({ name: teamName }).parse(req.body);
   const uid = userId(req);
   const teamId = pathParam(req.params.teamId, 'teamId');
   await assertTeamMember(pool, teamId, uid);
@@ -501,8 +555,8 @@ app.get('/teams/:teamId/members', asyncRoute(async (req: AuthedRequest, res) => 
 
 app.get('/teams/:teamId/calendar/events', asyncRoute(async (req: AuthedRequest, res) => {
   const query = z.object({
-    start: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-    end: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    start: dateString,
+    end: dateString,
     onlyTeamEvents: z.enum(['true', 'false']).default('false')
   }).parse(req.query);
   const uid = userId(req);
@@ -541,7 +595,7 @@ app.get('/teams/:teamId/calendar/events', asyncRoute(async (req: AuthedRequest, 
 
 app.post('/teams/:teamId/events', asyncRoute(async (req: AuthedRequest, res) => {
   const body = dateBody.extend({
-    participantUserIds: z.array(z.string()).default([])
+    participantUserIds: z.array(idText).default([])
   }).parse(req.body);
   const uid = userId(req);
   const teamId = pathParam(req.params.teamId, 'teamId');
@@ -677,7 +731,7 @@ app.post('/teams/:teamId/events/:eventId/leave', asyncRoute(async (req: AuthedRe
 }));
 
 app.patch('/teams/:teamId/events/:eventId', asyncRoute(async (req: AuthedRequest, res) => {
-  const body = z.object({ title: z.string().trim().min(1) }).parse(req.body);
+  const body = z.object({ title: eventTitle }).parse(req.body);
   const uid = userId(req);
   const teamId = pathParam(req.params.teamId, 'teamId');
   const eventId = pathParam(req.params.eventId, 'eventId');
@@ -694,7 +748,7 @@ app.patch('/teams/:teamId/events/:eventId', asyncRoute(async (req: AuthedRequest
 }));
 
 app.patch('/teams/:teamId/events/:eventId/move', asyncRoute(async (req: AuthedRequest, res) => {
-  const body = z.object({ startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/) }).parse(req.body);
+  const body = z.object({ startDate: dateString }).parse(req.body);
   const uid = userId(req);
   const teamId = pathParam(req.params.teamId, 'teamId');
   const eventId = pathParam(req.params.eventId, 'eventId');
@@ -729,9 +783,9 @@ app.delete('/teams/:teamId/events/:eventId', asyncRoute(async (req: AuthedReques
 app.patch('/teams/:teamId/events/:eventId/gear-requirements', asyncRoute(async (req: AuthedRequest, res) => {
   const body = z.object({
     requirements: z.array(z.object({
-      participantUserId: z.string().trim().min(1),
-      gearTypeId: z.string().trim().min(1),
-      userGearId: z.string().trim().min(1),
+      participantUserId: idText,
+      gearTypeId: idText,
+      userGearId: idText,
       quantity: z.number().int().min(0)
     }))
   }).parse(req.body);
@@ -800,13 +854,25 @@ app.patch('/teams/:teamId/events/:eventId/gear-requirements', asyncRoute(async (
   res.json({ gearSummary: summary });
 }));
 
-app.use((error: Error & { status?: number }, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+app.use((error: Error & { status?: number }, req: AuthedRequest, res: express.Response, _next: express.NextFunction) => {
+  const traceId = req.traceId ?? `trc_${nanoid(12)}`;
+  if (!req.traceId) {
+    req.traceId = traceId;
+    res.setHeader('X-Trace-Id', traceId);
+  }
   if (error instanceof z.ZodError) {
-    res.status(400).json({ error: 'validation_error', details: error.issues });
+    logError(error, req, 400, error.issues);
+    res.status(400).json({ error: 'VALIDATION_ERROR', message: '请求参数不合法', traceId });
     return;
   }
   const status = error.status ?? 500;
-  res.status(status).json({ error: error.message });
+  const publicStatus = status >= 400 && status < 600 ? status : 500;
+  logError(error, req, publicStatus);
+  res.status(publicStatus).json({
+    error: errorCodeForStatus(publicStatus),
+    message: errorMessageForStatus(publicStatus),
+    traceId
+  });
 });
 
 export {
