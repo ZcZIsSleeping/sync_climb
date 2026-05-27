@@ -169,7 +169,7 @@ const MONTH_NAMES = [
   'December',
 ]
 
-const API_BASE = 'http://localhost:8787'
+const API_BASE = 'https://www.synclimb.online'
 const TEST_ACCOUNTS = [
   { code: 'alice', nickname: 'Alice' },
   { code: 'bob', nickname: 'Bob' },
