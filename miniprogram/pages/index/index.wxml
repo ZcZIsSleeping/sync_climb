@@ -266,20 +266,15 @@
 
     <view class="tabbar">
       <view class="tab-item {{activeTab === 'calendar' ? 'tab-item--active' : ''}}" data-tab="calendar" bindtap="switchTab">
-        <view class="calendar-icon"></view>
+        <image class="tab-icon" src="/assets/icons/tabbar/calendar.svg" mode="aspectFit" />
         <text>Calendar</text>
       </view>
       <view class="tab-item {{activeTab === 'team' ? 'tab-item--active' : ''}}" data-tab="team" bindtap="switchTab">
-        <view class="team-icon">
-          <view class="team-head team-head--left"></view>
-          <view class="team-head team-head--right"></view>
-          <view class="team-body team-body--left"></view>
-          <view class="team-body team-body--right"></view>
-        </view>
+        <image class="tab-icon" src="/assets/icons/tabbar/team.svg" mode="aspectFit" />
         <text>Team</text>
       </view>
       <view class="tab-item {{activeTab === 'basecamp' ? 'tab-item--active' : ''}}" data-tab="basecamp" bindtap="switchTab">
-        <view class="tent-icon"></view>
+        <image class="tab-icon" src="/assets/icons/tabbar/basecamp.svg" mode="aspectFit" />
         <text>BaseCamp</text>
       </view>
     </view>

@@ -1071,99 +1071,16 @@ page {
   color: #1d74df;
 }
 
-.calendar-icon {
-  position: relative;
-  width: 34rpx;
-  height: 34rpx;
-  border: 3rpx solid currentColor;
-  border-radius: 4rpx;
+.tab-icon {
+  width: 44rpx;
+  height: 44rpx;
+  opacity: 0.46;
+  filter: grayscale(1);
 }
 
-.calendar-icon::before,
-.calendar-icon::after {
-  content: "";
-  position: absolute;
-  top: -8rpx;
-  width: 4rpx;
-  height: 12rpx;
-  border-radius: 999rpx;
-  background: currentColor;
-}
-
-.calendar-icon::before {
-  left: 7rpx;
-}
-
-.calendar-icon::after {
-  right: 7rpx;
-}
-
-.team-icon {
-  position: relative;
-  width: 46rpx;
-  height: 38rpx;
-}
-
-.team-head {
-  position: absolute;
-  top: 0;
-  width: 16rpx;
-  height: 16rpx;
-  border: 3rpx solid currentColor;
-  border-radius: 50%;
-}
-
-.team-head--left {
-  left: 6rpx;
-}
-
-.team-head--right {
-  right: 6rpx;
-}
-
-.team-body {
-  position: absolute;
-  bottom: 0;
-  width: 24rpx;
-  height: 16rpx;
-  border: 3rpx solid currentColor;
-  border-bottom: 0;
-  border-radius: 16rpx 16rpx 0 0;
-}
-
-.team-body--left {
-  left: 0;
-}
-
-.team-body--right {
-  right: 0;
-}
-
-.tent-icon {
-  position: relative;
-  width: 48rpx;
-  height: 38rpx;
-}
-
-.tent-icon::before,
-.tent-icon::after {
-  content: "";
-  position: absolute;
-  bottom: 0;
-  width: 28rpx;
-  height: 34rpx;
-  border: 3rpx solid currentColor;
-  border-bottom-width: 4rpx;
-  transform: skewX(-22deg);
-}
-
-.tent-icon::before {
-  left: 6rpx;
-}
-
-.tent-icon::after {
-  right: 6rpx;
-  transform: skewX(22deg);
+.tab-item--active .tab-icon {
+  opacity: 0.96;
+  filter: invert(39%) sepia(86%) saturate(1609%) hue-rotate(196deg) brightness(91%) contrast(91%);
 }
 
 .expanded-backdrop,
