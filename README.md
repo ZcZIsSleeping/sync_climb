@@ -51,6 +51,52 @@ curl http://localhost:8787/health
 
 小程序端使用微信开发者工具打开本目录。当前前端默认连接本地后端 `http://localhost:8787`。
 
+也可以直接使用部署脚本切换前端 API 并启动本地后端：
+
+```bash
+npm run deploy:local
+```
+
+脚本会执行：
+
+- 将小程序 `API_BASE` 切到 `http://localhost:8787`。
+- 安装缺失依赖。
+- 执行本地数据库迁移。
+- 以前台进程启动本地后端服务。
+
+如果需要覆盖默认本地配置：
+
+```bash
+LOCAL_API=http://127.0.0.1:8787 PORT=8787 DATABASE_URL=postgres://syn_climb:syn_climb@localhost:5432/syn_climb npm run deploy:local
+```
+
+## 线上部署
+
+部署当前分支到 `www.synclimb.online`：
+
+```bash
+npm run deploy:online -- "提交备注"
+```
+
+脚本会执行：
+
+- 将小程序 `API_BASE` 切到 `https://www.synclimb.online`。
+- 运行前端类型检查、后端构建和后端测试。
+- 提交当前所有本地更改，提交备注来自命令参数，未传时使用 `部署当前更改`。
+- 推送当前分支到 GitHub。
+- SSH 到线上服务器，拉取同一分支，安装依赖、构建、迁移数据库并重启 `synclimb-backend`。
+- 检查 `https://www.synclimb.online/health`。
+
+默认线上参数可用环境变量覆盖：
+
+```bash
+REMOTE_HOST=www.synclimb.online \
+REMOTE_USER=root \
+LOCAL_SSH_KEY=/Users/admin/.ssh/id_rsa \
+REMOTE_APP_DIR=/opt/sync_climb \
+npm run deploy:online -- "提交备注"
+```
+
 ## 测试
 
 测试使用独立数据库：

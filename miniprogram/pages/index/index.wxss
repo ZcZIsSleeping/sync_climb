@@ -12,6 +12,9 @@ page {
 }
 
 .app-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
   height: calc(100vh - 36rpx);
   overflow: hidden;
   border: 1rpx solid rgba(126, 143, 164, 0.25);
@@ -21,6 +24,7 @@ page {
 }
 
 .topbar {
+  flex: 0 0 104rpx;
   height: 104rpx;
   display: flex;
   align-items: center;
@@ -35,62 +39,19 @@ page {
   font-weight: 700;
 }
 
-.topbar-actions {
-  display: flex;
-  gap: 24rpx;
-  align-items: center;
-}
-
-.icon-button {
-  width: 56rpx;
-  height: 56rpx;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.filter-icon {
-  width: 28rpx;
-  height: 34rpx;
-  border: 4rpx solid #172335;
-  border-bottom: 0;
-  clip-path: polygon(0 0, 100% 0, 62% 45%, 62% 100%, 43% 100%, 43% 45%);
-}
-
-.plus-icon {
-  position: relative;
-  width: 42rpx;
-  height: 42rpx;
-  border: 4rpx solid #172335;
-  border-radius: 50%;
-}
-
-.plus-icon::before,
-.plus-icon::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 22rpx;
-  height: 3rpx;
-  border-radius: 999rpx;
-  background: #172335;
-  transform: translate(-50%, -50%);
-}
-
-.plus-icon::after {
-  transform: translate(-50%, -50%) rotate(90deg);
-}
-
 .calendar-scroll {
-  height: calc(100vh - 284rpx);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
 }
 
 .basecamp-scroll,
 .team-scroll,
 .team-detail,
 .placeholder-view {
-  height: calc(100vh - 284rpx);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
 }
 
 .month {
@@ -377,11 +338,23 @@ page {
 }
 
 .team-list {
+  min-height: 100%;
   display: flex;
   flex-direction: column;
   gap: 16rpx;
   box-sizing: border-box;
   padding: 28rpx 26rpx 40rpx;
+}
+
+.team-empty {
+  flex: 1;
+  min-height: 420rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a1a9b5;
+  font-size: 28rpx;
+  font-weight: 650;
 }
 
 .team-card {
@@ -508,6 +481,8 @@ page {
 
 .team-detail {
   position: relative;
+  display: flex;
+  flex-direction: column;
   overflow: hidden;
 }
 
@@ -756,12 +731,25 @@ page {
 }
 
 .team-calendar-scroll {
-  height: calc(100vh - 420rpx);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
 }
 
 .basecamp-content {
+  min-height: 100%;
   box-sizing: border-box;
   padding: 28rpx 26rpx 40rpx;
+}
+
+.basecamp-content--logged-out {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.basecamp-content--logged-in {
+  display: block;
 }
 
 .profile-panel,
@@ -779,6 +767,18 @@ page {
   display: flex;
   align-items: center;
   padding: 24rpx;
+}
+
+.profile-panel--logged-out {
+  width: 100%;
+  min-height: 240rpx;
+  justify-content: center;
+  border-color: rgba(127, 143, 164, 0.14);
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.profile-panel--logged-in {
+  animation: basecamp-profile-settle 260ms ease-out both;
 }
 
 .login-empty {
@@ -864,6 +864,8 @@ page {
 .gear-section {
   margin-top: 24rpx;
   padding: 24rpx;
+  transform-origin: 50% 0;
+  animation: gear-section-drop 360ms cubic-bezier(0.18, 0.88, 0.28, 1) both;
 }
 
 .section-head {
@@ -1046,6 +1048,7 @@ page {
 }
 
 .tabbar {
+  flex: 0 0 144rpx;
   height: 144rpx;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2035,5 +2038,31 @@ page {
   100% {
     opacity: 1;
     transform: translate(-50%, -50%) scaleY(1) scaleX(1);
+  }
+}
+
+@keyframes basecamp-profile-settle {
+  0% {
+    opacity: 0.72;
+    transform: translateY(78rpx) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes gear-section-drop {
+  0% {
+    opacity: 0;
+    transform: translateY(-28rpx) scaleY(0.88);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(6rpx) scaleY(1.01);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scaleY(1);
   }
 }

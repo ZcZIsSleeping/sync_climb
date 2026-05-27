@@ -169,7 +169,7 @@ const MONTH_NAMES = [
   'December',
 ]
 
-const API_BASE = 'https://www.synclimb.online'
+const API_BASE = 'http://localhost:8787'
 const COLORS: Array<'blue' | 'pink' | 'green' | 'violet'> = ['blue', 'pink', 'green', 'violet']
 const GEAR_TYPE_BY_LABEL: Record<string, string> = {
   快挂: 'gear_quickdraw',
@@ -413,6 +413,8 @@ Page({
   data: {
     activeTab: 'calendar' as TabKey,
     pageTitle: 'Calendar',
+    pageSafeStyle: '',
+    appShellStyle: '',
     months: [] as CalendarMonth[],
     currentMonthKey: `${new Date().getFullYear()}-${new Date().getMonth() + 1}`,
     calendarScrollIntoView: '',
@@ -513,14 +515,29 @@ Page({
   suppressNextEventTap: false,
 
   onLoad() {
+    this.setupSafeArea()
     this.refreshMonths()
     this.refreshTeamMonths()
     setTimeout(() => this.scrollToTodayMonth(), 80)
   },
 
+  setupSafeArea() {
+    const system = wx.getSystemInfoSync() as { statusBarHeight?: number }
+    const topPadding = Math.max(9, (system.statusBarHeight || 0) + 6)
+    this.setData({
+      pageSafeStyle: `padding-top:${topPadding}px;`,
+      appShellStyle: `height:calc(100vh - ${topPadding}px - 18rpx);`,
+    })
+  },
+
   api<T>(path: string, method: ApiMethod = 'GET', body?: unknown): Promise<T> {
     const token = (this.data as { authToken: string }).authToken
     return new Promise((resolve, reject) => {
+      if (!token && !path.startsWith('/auth/')) {
+        this.ensureLogin()
+        reject(new Error('login required'))
+        return
+      }
       wx.request({
         url: `${API_BASE}${path}`,
         method,
@@ -631,7 +648,30 @@ Page({
 
   ensureLogin(): boolean {
     if ((this.data as { authToken: string }).authToken) return true
-    this.toast('请先登录测试账号')
+    this.longPressActive = false
+    this.resetEventDrag()
+    this.setData({
+      activeTab: 'basecamp',
+      pageTitle: 'BaseCamp',
+      scrollEnabled: true,
+      expandedDate: '',
+      expandedEvents: [],
+      createVisible: false,
+      editingEvent: null,
+      inviteConfirmEvent: null,
+      teamEditVisible: false,
+      teamEditClosing: false,
+      teamGearExpanded: false,
+      teamGearClosing: false,
+      teamDetailEvent: null,
+      otherEventPreview: null,
+      teamDayPreviewDate: '',
+      teamDayPreviewEvents: [],
+      selectionPreviewVisible: false,
+      dragGhostVisible: false,
+      dropPreviewVisible: false,
+    })
+    this.toast('请先登录')
     return false
   },
 
@@ -686,6 +726,7 @@ Page({
 
   switchTab(event: TouchEventLike) {
     const tab = String(event.currentTarget.dataset.tab || 'calendar') as TabKey
+    if (tab !== 'basecamp' && !this.ensureLogin()) return
     const titleMap: Record<TabKey, string> = {
       calendar: 'Calendar',
       team: 'Team',
@@ -800,6 +841,7 @@ Page({
   },
 
   async enterTeam(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     const team = ((this.data as { teams: TeamCard[] }).teams).find((item) => item.id === id)
     if (!team) return
@@ -830,6 +872,7 @@ Page({
   },
 
   pinTeam(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
     const currentTeams = (this.data as { teams: TeamCard[] }).teams
@@ -846,6 +889,7 @@ Page({
   },
 
   exitTeam(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
     this.api(`/teams/${id}/leave`, 'DELETE')
@@ -871,6 +915,7 @@ Page({
   },
 
   openTeamEditPanel() {
+    if (!this.ensureLogin()) return
     this.setData({ teamEditVisible: true, teamEditClosing: false })
   },
 
@@ -905,6 +950,7 @@ Page({
   },
 
   saveTeamName() {
+    if (!this.ensureLogin()) return
     const data = this.data as { selectedTeamId: string; teamName: string }
     if (!data.selectedTeamId || !data.teamName.trim()) return
     this.api(`/teams/${data.selectedTeamId}`, 'PATCH', { name: data.teamName.trim() })
@@ -913,6 +959,7 @@ Page({
   },
 
   copyRoomNo() {
+    if (!this.ensureLogin()) return
     const team = (this.data as { selectedTeam: TeamCard | null }).selectedTeam
     if (!team) return
     wx.setClipboardData({ data: team.roomNo })
@@ -920,6 +967,7 @@ Page({
   },
 
   toggleTeamFilter() {
+    if (!this.ensureLogin()) return
     const next = !(this.data as { teamOnlyFilter: boolean }).teamOnlyFilter
     const teamId = (this.data as { selectedTeamId: string }).selectedTeamId
     this.setData({ teamOnlyFilter: next }, () => {
@@ -929,6 +977,7 @@ Page({
   },
 
   toggleTeamGearPanel() {
+    if (!this.ensureLogin()) return
     const data = this.data as { teamGearExpanded: boolean }
     if (!data.teamGearExpanded) {
       this.setData({ teamGearExpanded: true, teamGearClosing: false })
@@ -941,6 +990,7 @@ Page({
   },
 
   onTeamSearchInput(event: InputEventLike) {
+    if (!this.ensureLogin()) return
     const teamSearchId = event.detail.value
     const members = (this.data as { teamMembers: TeamMember[] }).teamMembers
     const filteredTeamMembers = teamSearchId.trim()
@@ -950,6 +1000,7 @@ Page({
   },
 
   onDayTouchStart(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     if (event.currentTarget.dataset.blank) return
     const date = String(event.currentTarget.dataset.date || '')
     this.touchStartDate = date
@@ -957,6 +1008,7 @@ Page({
   },
 
   onDayLongPress(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     if (event.currentTarget.dataset.blank) return
     const date = String(event.currentTarget.dataset.date || '')
     wx.vibrateShort({ type: 'light' })
@@ -1002,6 +1054,7 @@ Page({
   },
 
   onTeamDayTouchStart(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     if (event.currentTarget.dataset.blank) return
     const date = String(event.currentTarget.dataset.date || '')
     this.touchStartDate = date
@@ -1009,6 +1062,7 @@ Page({
   },
 
   onTeamDayLongPress(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     if (event.currentTarget.dataset.blank) return
     const date = String(event.currentTarget.dataset.date || '')
     wx.vibrateShort({ type: 'light' })
@@ -1060,6 +1114,7 @@ Page({
   },
 
   async openTeamEventDetail(found: TeamCalendarEvent, explicitTeamId?: string) {
+    if (!this.ensureLogin()) return
     const teamId = explicitTeamId || found.teamId || (this.data as { selectedTeamId: string }).selectedTeamId
     if (!teamId) return
     const detail = await this.api<{
@@ -1088,6 +1143,7 @@ Page({
   },
 
   openInviteConfirm(found: ClimbEvent | TeamCalendarEvent, scope: 'calendar' | 'team') {
+    if (!this.ensureLogin()) return
     this.setData({
       inviteConfirmEvent: {
         id: found.id,
@@ -1103,6 +1159,7 @@ Page({
   },
 
   async openJoinedTeamEventFromCalendar(found: ClimbEvent) {
+    if (!this.ensureLogin()) return
     if (!found.teamId) return
     this.setData({
       expandedDate: '',
@@ -1130,6 +1187,7 @@ Page({
   },
 
   onTeamEventTap(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     if (this.suppressNextEventTap) {
       this.suppressNextEventTap = false
       return
@@ -1149,6 +1207,7 @@ Page({
   },
 
   onTeamEventLongPress(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
     if (!found || !found.isTeamEvent) return
@@ -1211,6 +1270,7 @@ Page({
   },
 
   onTeamMoreTap(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const date = String(event.currentTarget.dataset.date || '')
     const events = this.getVisibleTeamEventsForDate(date)
     if (!events.length) return
@@ -1226,6 +1286,7 @@ Page({
   },
 
   onTeamPreviewEventTap(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
     if (!found) return
@@ -1248,6 +1309,7 @@ Page({
   },
 
   onDayTap(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     if (event.currentTarget.dataset.blank || this.longPressActive) return
     const date = String(event.currentTarget.dataset.date || '')
     const dayEvents = sortedEventsForDate((this.data as { events: ClimbEvent[] }).events, date)
@@ -1262,6 +1324,7 @@ Page({
   },
 
   async onCalendarEventTap(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     if (this.suppressNextEventTap) {
       this.suppressNextEventTap = false
       return
@@ -1287,6 +1350,7 @@ Page({
   },
 
   onCalendarMoreTap(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const date = String(event.currentTarget.dataset.date || '')
     const dayEvents = sortedEventsForDate((this.data as { events: ClimbEvent[] }).events, date)
     if (dayEvents.length === 0) return
@@ -1300,6 +1364,7 @@ Page({
   },
 
   onCalendarEventLongPress(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
     if (!found) return
@@ -1578,6 +1643,7 @@ Page({
   },
 
   onGearIconChange(event: PickerEventLike) {
+    if (!this.ensureLogin()) return
     const index = Number(event.detail.value)
     const option = GEAR_ICON_OPTIONS[index] || GEAR_ICON_OPTIONS[0]
     this.setData({
@@ -1588,6 +1654,7 @@ Page({
   },
 
   onGearNameInput(event: InputEventLike) {
+    if (!this.ensureLogin()) return
     this.setData({ newGearName: event.detail.value })
   },
 
@@ -1615,6 +1682,7 @@ Page({
   },
 
   async closeTeamEventDetail() {
+    if (!this.ensureLogin()) return
     await this.submitEventGearIfDirty()
     this.setData({ teamEventClosing: true })
     setTimeout(() => {
@@ -1630,6 +1698,7 @@ Page({
   },
 
   toggleMemberGear(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     const editors = ((this.data as { memberGearEditors: MemberGearEditor[] }).memberGearEditors).map((item) => {
       if (item.member.id !== id) return item
@@ -1639,6 +1708,7 @@ Page({
   },
 
   changeEventGear(event: TouchEventLike, delta: number) {
+    if (!this.ensureLogin()) return
     const memberId = String(event.currentTarget.dataset.member || '')
     const gearId = String(event.currentTarget.dataset.gear || '')
     const data = this.data as {
@@ -1686,6 +1756,7 @@ Page({
   },
 
   async submitEventGearIfDirty() {
+    if (!this.ensureLogin()) return
     const data = this.data as {
       eventGearDirty: boolean
       memberGearEditors: MemberGearEditor[]
@@ -1736,6 +1807,7 @@ Page({
   },
 
   onGearSummaryLongPress(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const gearTypeId = String(event.currentTarget.dataset.geartype || '')
     if (!gearTypeId) return
     wx.vibrateShort({ type: 'light' })
@@ -1760,6 +1832,7 @@ Page({
   },
 
   async deleteTeamEvent() {
+    if (!this.ensureLogin()) return
     const data = this.data as { teamDetailEvent: TeamCalendarEvent | null; teamEvents: TeamCalendarEvent[] }
     if (!data.teamDetailEvent) return
     wx.vibrateShort({ type: 'light' })
@@ -1775,6 +1848,7 @@ Page({
   },
 
   async joinTeamDetailEvent() {
+    if (!this.ensureLogin()) return
     const data = this.data as {
       teamDetailEvent: TeamCalendarEvent | null
       teamEvents: TeamCalendarEvent[]
@@ -1796,6 +1870,7 @@ Page({
   },
 
   async leaveTeamDetailEvent() {
+    if (!this.ensureLogin()) return
     const data = this.data as {
       teamDetailEvent: TeamCalendarEvent | null
       teamEvents: TeamCalendarEvent[]
@@ -1845,6 +1920,7 @@ Page({
   },
 
   async decreaseGear(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
     const current = ((this.data as { gearItems: GearItem[] }).gearItems).find((item) => item.id === id)
@@ -1859,6 +1935,7 @@ Page({
   },
 
   async increaseGear(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
     const current = ((this.data as { gearItems: GearItem[] }).gearItems).find((item) => item.id === id)
@@ -1873,6 +1950,7 @@ Page({
   },
 
   async deleteGear(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
     await this.api(`/me/gears/${id}`, 'DELETE')
@@ -1881,6 +1959,7 @@ Page({
   },
 
   async saveCreatedEvent() {
+    if (!this.ensureLogin()) return
     const data = this.data as {
       events: ClimbEvent[]
       teamEvents: TeamCalendarEvent[]
@@ -1950,6 +2029,7 @@ Page({
   },
 
   async onEventTap(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { expandedEvents: EventPreview[] }).expandedEvents).find((item) => item.id === id)
     if (!found) return
@@ -1973,6 +2053,7 @@ Page({
   },
 
   async saveEditedEvent() {
+    if (!this.ensureLogin()) return
     const data = this.data as {
       events: ClimbEvent[]
       editingEvent: EventPreview | null
@@ -1994,6 +2075,7 @@ Page({
   },
 
   async deleteEditingEvent() {
+    if (!this.ensureLogin()) return
     const data = this.data as {
       events: ClimbEvent[]
       editingEvent: EventPreview | null
@@ -2026,6 +2108,7 @@ Page({
   },
 
   async acceptInviteEvent() {
+    if (!this.ensureLogin()) return
     const invite = (this.data as { inviteConfirmEvent: InviteEvent | null }).inviteConfirmEvent
     if (!invite) return
     await this.api(`/me/events/${invite.id}/accept`, 'POST')
@@ -2055,6 +2138,7 @@ Page({
   },
 
   async rejectInviteEvent() {
+    if (!this.ensureLogin()) return
     const invite = (this.data as { inviteConfirmEvent: InviteEvent | null }).inviteConfirmEvent
     if (!invite) return
     await this.api(`/me/events/${invite.id}/reject`, 'POST')

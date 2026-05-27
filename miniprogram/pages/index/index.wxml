@@ -1,11 +1,7 @@
-<view class="page">
-  <view class="app-shell">
+<view class="page" style="{{pageSafeStyle}}">
+  <view class="app-shell" style="{{appShellStyle}}">
     <view class="topbar">
       <text class="brand">{{pageTitle}}</text>
-      <view class="topbar-actions">
-        <view class="icon-button"><view class="filter-icon"></view></view>
-        <view class="icon-button"><view class="plus-icon"></view></view>
-      </view>
     </view>
 
     <scroll-view
@@ -84,6 +80,7 @@
 
     <scroll-view wx:if="{{activeTab === 'team' && !selectedTeamId}}" class="team-scroll" scroll-y="true" enhanced="true">
       <view class="team-list">
+        <view wx:if="{{!teams.length}}" class="team-empty">Empty</view>
         <view class="team-card {{item.pinned ? 'team-card--pinned' : ''}}" wx:for="{{teams}}" wx:key="id" data-id="{{item.id}}" bindtap="enterTeam">
           <view class="team-avatar">{{item.avatar}}</view>
           <view class="team-card-copy">
@@ -216,8 +213,8 @@
     </view>
 
     <scroll-view wx:if="{{activeTab === 'basecamp'}}" class="basecamp-scroll" scroll-y="true" enhanced="true">
-      <view class="basecamp-content">
-        <view class="profile-panel">
+      <view class="basecamp-content {{loggedIn ? 'basecamp-content--logged-in' : 'basecamp-content--logged-out'}}">
+        <view class="profile-panel {{loggedIn ? 'profile-panel--logged-in' : 'profile-panel--logged-out'}}">
           <view wx:if="{{!loggedIn}}" class="login-empty">
             <button
               class="login-button"
@@ -232,7 +229,7 @@
           </view>
         </view>
 
-        <view class="gear-section">
+        <view wx:if="{{loggedIn}}" class="gear-section">
           <view class="section-head">
             <text class="section-title">装备区</text>
             <text class="section-count">{{gearItems.length}} 件装备</text>
