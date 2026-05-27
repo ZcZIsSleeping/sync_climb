@@ -28,7 +28,10 @@ async function resetDb() {
       ('gear_quickdraw', '快挂', 'Q', true),
       ('gear_locking_carabiner', '主锁', 'L', true),
       ('gear_cam', '机械塞', 'C', true),
-      ('gear_rope', '绳索', 'R', true)
+      ('gear_rope', '绳索', 'R', true),
+      ('gear_nuts', '岩塞', 'N', true),
+      ('gear_sling', '扁带', 'S', true),
+      ('gear_tent', '帐篷', 'T', true)
   `);
 }
 
@@ -75,7 +78,7 @@ describe('health and auth', () => {
 
     const alice = await login('alice-auth', 'Alice');
     const gearTypes = await request(app).get('/gear-types').set('authorization', auth(alice.token)).expect(200);
-    expect(gearTypes.body.gearTypes).toHaveLength(4);
+    expect(gearTypes.body.gearTypes).toHaveLength(7);
   });
 
   it('returns safe errors with trace ids and logs original error context', async () => {

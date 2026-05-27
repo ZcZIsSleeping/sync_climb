@@ -129,7 +129,10 @@
               </view>
               <scroll-view class="member-column-list" scroll-y="true" enhanced="true">
                 <view class="member-gear-row" wx:for="{{item.gear}}" wx:for-item="gear" wx:key="id">
-                  <view class="gear-card-icon">{{gear.icon}}</view>
+                  <view class="gear-card-icon">
+                    <image wx:if="{{gear.iconUrl}}" class="gear-icon-image" src="{{gear.iconUrl}}" mode="aspectFit" />
+                    <text wx:else>{{gear.icon}}</text>
+                  </view>
                   <text class="member-gear-name">{{gear.name}}</text>
                   <text class="member-gear-count">×{{gear.count}}</text>
                 </view>
@@ -238,7 +241,10 @@
           <view class="gear-add-card">
             <picker mode="selector" range="{{gearIconLabels}}" value="{{selectedGearIconIndex}}" bindchange="onGearIconChange">
               <view class="gear-picker">
-                <text class="gear-icon">{{selectedGearIcon}}</text>
+                <view class="gear-icon">
+                  <image wx:if="{{selectedGearIconUrl}}" class="gear-icon-image" src="{{selectedGearIconUrl}}" mode="aspectFit" />
+                  <text wx:else>{{selectedGearIcon}}</text>
+                </view>
                 <text class="gear-picker-label">{{selectedGearIconLabel}}</text>
               </view>
             </picker>
@@ -249,7 +255,10 @@
           <view class="gear-list">
             <view class="gear-card" wx:for="{{gearItems}}" wx:key="id">
               <view class="gear-card-main">
-                <view class="gear-card-icon">{{item.icon}}</view>
+                <view class="gear-card-icon">
+                  <image wx:if="{{item.iconUrl}}" class="gear-icon-image" src="{{item.iconUrl}}" mode="aspectFit" />
+                  <text wx:else>{{item.icon}}</text>
+                </view>
                 <text class="gear-card-name">{{item.name}}</text>
               </view>
               <view class="gear-controls">
@@ -351,7 +360,10 @@
           bindtouchend="hideGearSummaryDetail"
           bindtouchcancel="hideGearSummaryDetail"
         >
-          <view class="event-gear-icon">{{item.icon}}</view>
+          <view class="event-gear-icon">
+            <image wx:if="{{item.iconUrl}}" class="gear-icon-image" src="{{item.iconUrl}}" mode="aspectFit" />
+            <text wx:else>{{item.icon}}</text>
+          </view>
           <text class="event-gear-name">{{item.name}}</text>
           <text>x{{item.count}}</text>
         </view>
@@ -398,7 +410,10 @@
           </view>
           <view wx:if="{{editor.expanded}}" class="participant-gear-list">
             <view class="participant-gear-row" wx:for="{{editor.allocations}}" wx:for-item="gear" wx:key="id">
-              <view class="gear-card-icon">{{gear.icon}}</view>
+              <view class="gear-card-icon">
+                <image wx:if="{{gear.iconUrl}}" class="gear-icon-image" src="{{gear.iconUrl}}" mode="aspectFit" />
+                <text wx:else>{{gear.icon}}</text>
+              </view>
               <text class="participant-gear-name">{{gear.name}}</text>
               <view class="gear-controls">
                 <view class="gear-control-button" data-member="{{editor.member.id}}" data-gear="{{gear.id}}" bindtap="decreaseEventGear">-</view>

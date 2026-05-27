@@ -91,12 +91,14 @@ type EventPreview = ClimbEvent & {
 type GearIconOption = {
   label: string
   icon: string
+  iconUrl: string
 }
 
 type GearItem = {
   id: string
   name: string
   icon: string
+  iconUrl: string
   count: number
   gearTypeId?: string
   userGearId?: string
@@ -149,10 +151,13 @@ const INITIAL_MONTH_OFFSET = -INITIAL_RENDER_AROUND
 const INITIAL_MONTH_COUNT = INITIAL_RENDER_AROUND * 2 + 1
 const WEEKDAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const GEAR_ICON_OPTIONS: GearIconOption[] = [
-  { label: '快挂', icon: 'Q' },
-  { label: '主锁', icon: 'L' },
-  { label: '机械塞', icon: 'C' },
-  { label: '绳索', icon: 'R' },
+  { label: '快挂', icon: 'Q', iconUrl: '/assets/icons/gear/quickdraw.png' },
+  { label: '主锁', icon: 'L', iconUrl: '/assets/icons/gear/lock.png' },
+  { label: '机械塞', icon: 'C', iconUrl: '/assets/icons/gear/friends.png' },
+  { label: '绳索', icon: 'R', iconUrl: '/assets/icons/gear/rope.png' },
+  { label: '岩塞', icon: 'N', iconUrl: '/assets/icons/gear/nuts.png' },
+  { label: '扁带', icon: 'S', iconUrl: '/assets/icons/gear/sling.png' },
+  { label: '帐篷', icon: 'T', iconUrl: '/assets/icons/gear/tent.png' },
 ]
 const MONTH_NAMES = [
   'January',
@@ -169,18 +174,38 @@ const MONTH_NAMES = [
   'December',
 ]
 
-const API_BASE = 'http://localhost:8787'
+const API_BASE = 'https://www.synclimb.online'
 const COLORS: Array<'blue' | 'pink' | 'green' | 'violet'> = ['blue', 'pink', 'green', 'violet']
 const GEAR_TYPE_BY_LABEL: Record<string, string> = {
   快挂: 'gear_quickdraw',
   主锁: 'gear_locking_carabiner',
   机械塞: 'gear_cam',
   绳索: 'gear_rope',
+  岩塞: 'gear_nuts',
+  扁带: 'gear_sling',
+  帐篷: 'gear_tent',
 }
 const GEAR_TYPE_META: Record<string, GearIconOption> = GEAR_ICON_OPTIONS.reduce((acc, item) => {
   acc[GEAR_TYPE_BY_LABEL[item.label]] = item
   return acc
 }, {} as Record<string, GearIconOption>)
+const GEAR_ICON_BY_KEY: Record<string, string> = {
+  Q: '/assets/icons/gear/quickdraw.png',
+  L: '/assets/icons/gear/lock.png',
+  C: '/assets/icons/gear/friends.png',
+  R: '/assets/icons/gear/rope.png',
+  N: '/assets/icons/gear/nuts.png',
+  S: '/assets/icons/gear/sling.png',
+  T: '/assets/icons/gear/tent.png',
+  quickdraw: '/assets/icons/gear/quickdraw.png',
+  lock: '/assets/icons/gear/lock.png',
+  cam: '/assets/icons/gear/friends.png',
+  friends: '/assets/icons/gear/friends.png',
+  rope: '/assets/icons/gear/rope.png',
+  nuts: '/assets/icons/gear/nuts.png',
+  sling: '/assets/icons/gear/sling.png',
+  tent: '/assets/icons/gear/tent.png',
+}
 
 function dateKey(date: Date): string {
   const y = date.getFullYear()
@@ -450,6 +475,7 @@ Page({
     gearIconLabels: GEAR_ICON_OPTIONS.map((item) => item.label),
     selectedGearIconIndex: 0,
     selectedGearIcon: GEAR_ICON_OPTIONS[0].icon,
+    selectedGearIconUrl: GEAR_ICON_OPTIONS[0].iconUrl,
     selectedGearIconLabel: GEAR_ICON_OPTIONS[0].label,
     newGearName: '',
     gearItems: [] as GearItem[],
@@ -625,12 +651,16 @@ Page({
   },
 
   mapApiGear(item: any): GearItem {
+    const gearTypeId = item.gearTypeId
+    const iconKey = item.iconKey || ''
+    const meta = gearTypeId ? GEAR_TYPE_META[gearTypeId] : null
     return {
       id: item.id || item.userGearId || item.gearTypeId,
       name: item.name,
-      icon: item.icon || item.iconKey || 'G',
+      icon: item.icon || meta?.icon || iconKey || 'G',
+      iconUrl: item.iconUrl || meta?.iconUrl || GEAR_ICON_BY_KEY[iconKey] || '',
       count: item.count ?? item.quantity ?? 0,
-      gearTypeId: item.gearTypeId,
+      gearTypeId,
       userGearId: item.userGearId || item.id,
     }
   },
@@ -1694,6 +1724,7 @@ Page({
     this.setData({
       selectedGearIconIndex: index,
       selectedGearIcon: option.icon,
+      selectedGearIconUrl: option.iconUrl,
       selectedGearIconLabel: option.label,
     })
   },
@@ -1843,6 +1874,7 @@ Page({
           id: gearTypeId,
           name: meta?.label || gear.name,
           icon: meta?.icon || gear.icon,
+          iconUrl: meta?.iconUrl || gear.iconUrl,
           count: gear.count,
           gearTypeId,
         })
@@ -1951,12 +1983,13 @@ Page({
       name,
       quantity: 1,
     })
-    const next = this.mapApiGear({ ...res.gear, icon: option.icon, count: res.gear.quantity })
+    const next = this.mapApiGear({ ...res.gear, icon: option.icon, iconUrl: option.iconUrl, count: res.gear.quantity })
     this.setData({
       gearItems: [next, ...data.gearItems],
       newGearName: '',
       selectedGearIconIndex: 0,
       selectedGearIcon: GEAR_ICON_OPTIONS[0].icon,
+      selectedGearIconUrl: GEAR_ICON_OPTIONS[0].iconUrl,
       selectedGearIconLabel: GEAR_ICON_OPTIONS[0].label,
     })
   },
