@@ -115,33 +115,35 @@
         </view>
       </view>
 
-      <view wx:if="{{teamGearExpanded || teamGearClosing}}" class="team-gear-panel team-gear-panel--expanded {{teamGearClosing ? 'team-gear-panel--closing' : ''}}">
-        <view class="team-gear-panel-head">
-          <text class="section-title">团队装备</text>
-        </view>
-        <input class="member-search" value="{{teamSearchId}}" placeholder="按成员 id / 昵称筛选" bindinput="onTeamSearchInput" />
-        <scroll-view class="member-gear-scroll" scroll-x="true" enhanced="true">
-          <view class="member-gear-track">
-            <view class="member-gear-column" wx:for="{{filteredTeamMembers}}" wx:key="id">
-              <view class="member-column-head">
-                <view class="member-avatar member-avatar--{{item.color}}">{{item.avatar}}</view>
-                <text class="member-name">{{item.name}}</text>
-              </view>
-              <scroll-view class="member-column-list" scroll-y="true" enhanced="true">
-                <view class="member-gear-row" wx:for="{{item.gear}}" wx:for-item="gear" wx:key="id">
-                  <view class="gear-card-icon">
-                    <image wx:if="{{gear.iconUrl}}" class="gear-icon-image" src="{{gear.iconUrl}}" mode="aspectFit" />
-                    <text wx:else>{{gear.icon}}</text>
-                  </view>
-                  <text class="member-gear-name">{{gear.name}}</text>
-                  <text class="member-gear-count">×{{gear.count}}</text>
-                </view>
-              </scroll-view>
-            </view>
+      <view class="team-gear-panel-shell {{teamGearExpanded ? 'team-gear-panel-shell--open' : ''}} {{teamGearClosing ? 'team-gear-panel-shell--closing' : ''}}">
+        <view class="team-gear-panel">
+          <view class="team-gear-panel-head">
+            <text class="section-title">团队装备</text>
           </view>
-        </scroll-view>
-        <view class="gear-pull-tab gear-pull-tab--panel-bottom" bindtap="toggleTeamGearPanel">
-          <text>Gear</text>
+          <input class="member-search" value="{{teamSearchId}}" placeholder="按成员 id / 昵称筛选" bindinput="onTeamSearchInput" />
+          <scroll-view class="member-gear-scroll" scroll-x="true" enhanced="true">
+            <view class="member-gear-track">
+              <view class="member-gear-column" wx:for="{{filteredTeamMembers}}" wx:key="id">
+                <view class="member-column-head">
+                  <view class="member-avatar member-avatar--{{item.color}}">{{item.avatar}}</view>
+                  <text class="member-name">{{item.name}}</text>
+                </view>
+                <scroll-view class="member-column-list" scroll-y="true" enhanced="true">
+                  <view class="member-gear-row" wx:for="{{item.gear}}" wx:for-item="gear" wx:key="id">
+                    <view class="gear-card-icon">
+                      <image wx:if="{{gear.iconUrl}}" class="gear-icon-image" src="{{gear.iconUrl}}" mode="aspectFit" />
+                      <text wx:else>{{gear.icon}}</text>
+                    </view>
+                    <text class="member-gear-name">{{gear.name}}</text>
+                    <text class="member-gear-count">×{{gear.count}}</text>
+                  </view>
+                </scroll-view>
+              </view>
+            </view>
+          </scroll-view>
+          <view class="gear-pull-tab gear-pull-tab--panel-bottom" bindtap="toggleTeamGearPanel">
+            <text>Gear</text>
+          </view>
         </view>
       </view>
 
@@ -225,9 +227,12 @@
             >微信登录</button>
           </view>
           <view wx:else class="profile-row">
-            <image wx:if="{{avatarUrl}}" class="avatar avatar-image" src="{{avatarUrl}}" mode="aspectFill" binderror="onAvatarError" />
-            <view wx:else class="avatar">{{avatarText}}</view>
-            <input class="nickname-input" value="{{nickname}}" bindinput="onNicknameInput" bindblur="saveNickname" />
+            <button class="avatar-button" open-type="chooseAvatar" bindchooseavatar="onChooseAvatar">
+              <image wx:if="{{avatarUrl}}" class="avatar avatar-image" src="{{avatarUrl}}" mode="aspectFill" binderror="onAvatarError" />
+              <view wx:else class="avatar">{{avatarText}}</view>
+            </button>
+            <view wx:if="{{!nicknameEditing}}" class="nickname-display" bindtap="startNicknameEdit">{{nickname || '昵称'}}</view>
+            <input wx:else class="nickname-input" type="text" value="{{nickname}}" placeholder="昵称" focus="true" confirm-type="done" bindinput="onNicknameInput" bindconfirm="saveNickname" bindblur="saveNickname" />
             <button class="logout-button" bindtap="logout">退出</button>
           </view>
         </view>

@@ -592,30 +592,41 @@ page {
   margin-top: 10rpx;
 }
 
-.team-gear-panel {
-  box-sizing: border-box;
-  margin: 0 26rpx 14rpx;
-  padding: 16rpx;
-  border: 1rpx solid rgba(127, 143, 164, 0.18);
-  border-radius: 26rpx;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 14rpx 36rpx rgba(39, 58, 82, 0.08);
-}
-
-.team-gear-panel--expanded {
+.team-gear-panel-shell {
   position: absolute;
   left: 0;
   right: 0;
   top: 0;
   z-index: 8;
-  margin-top: 18rpx;
-  background: rgba(255, 255, 255, 0.86);
-  backdrop-filter: blur(20rpx);
+  box-sizing: border-box;
+  height: 430rpx;
+  padding: 18rpx 26rpx 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-430rpx);
+}
+
+.team-gear-panel-shell--open {
+  opacity: 1;
+  pointer-events: auto;
   animation: gear-panel-down 240ms ease-out both;
 }
 
-.team-gear-panel--closing {
+.team-gear-panel-shell--closing {
+  pointer-events: none;
   animation: gear-panel-up 220ms ease-in both;
+}
+
+.team-gear-panel {
+  position: relative;
+  box-sizing: border-box;
+  height: 392rpx;
+  padding: 16rpx;
+  border: 1rpx solid rgba(127, 143, 164, 0.18);
+  border-radius: 26rpx;
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(20rpx);
+  box-shadow: 0 14rpx 36rpx rgba(39, 58, 82, 0.08);
 }
 
 .gear-pull-tab--panel-bottom {
@@ -811,6 +822,30 @@ page {
   gap: 20rpx;
 }
 
+.avatar-button {
+  width: 86rpx;
+  min-width: 86rpx;
+  max-width: 86rpx;
+  height: 86rpx;
+  min-height: 86rpx;
+  max-height: 86rpx;
+  margin: 0;
+  padding: 0;
+  flex: 0 0 86rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 50%;
+  background: transparent;
+  line-height: 1;
+}
+
+.avatar-button::after {
+  border: 0;
+}
+
 .avatar {
   width: 86rpx;
   height: 86rpx;
@@ -831,6 +866,7 @@ page {
   background: rgba(246, 249, 252, 0.86);
 }
 
+.nickname-display,
 .nickname-input {
   min-width: 0;
   height: 72rpx;
@@ -842,6 +878,23 @@ page {
   color: #172335;
   font-size: 28rpx;
   font-weight: 800;
+}
+
+.nickname-display {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  line-height: 72rpx;
+  text-align: left;
+}
+
+.nickname-input {
+  display: block;
+  line-height: 72rpx;
+  text-align: left;
 }
 
 .logout-button {
@@ -1806,7 +1859,7 @@ page {
 @keyframes gear-panel-down {
   from {
     opacity: 0;
-    transform: translateY(-100%);
+    transform: translateY(-430rpx);
   }
   to {
     opacity: 1;
@@ -1821,7 +1874,7 @@ page {
   }
   to {
     opacity: 0;
-    transform: translateY(-100%);
+    transform: translateY(-430rpx);
   }
 }
 

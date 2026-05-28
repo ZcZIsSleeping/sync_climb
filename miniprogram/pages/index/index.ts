@@ -174,7 +174,7 @@ const MONTH_NAMES = [
   'December',
 ]
 
-const API_BASE = 'https://www.synclimb.online'
+const API_BASE = 'http://localhost:8787'
 const COLORS: Array<'blue' | 'pink' | 'green' | 'violet'> = ['blue', 'pink', 'green', 'violet']
 const GEAR_TYPE_BY_LABEL: Record<string, string> = {
   快挂: 'gear_quickdraw',
@@ -469,6 +469,7 @@ Page({
     editTitle: '',
     loggedIn: false,
     nickname: '山野同伴',
+    nicknameEditing: false,
     avatarUrl: '',
     avatarText: avatarTextFromNickname('山野同伴'),
     gearIconOptions: GEAR_ICON_OPTIONS,
@@ -603,21 +604,35 @@ Page({
     })
   },
 
-  getWechatProfile(): Promise<{ nickname: string; avatarUrl: string }> {
-    return new Promise((resolve) => {
-      if (!wx.getUserProfile) {
-        resolve({ nickname: '攀登者', avatarUrl: '' })
+  uploadAvatar(filePath: string): Promise<string> {
+    const token = (this.data as { authToken: string }).authToken
+    return new Promise((resolve, reject) => {
+      if (!token) {
+        reject(new Error('login required'))
         return
       }
-      wx.getUserProfile({
-        desc: '用于同步攀登计划中的昵称和头像',
-        success: (res) => {
-          resolve({
-            nickname: res.userInfo.nickName || '攀登者',
-            avatarUrl: res.userInfo.avatarUrl || '',
-          })
+      wx.uploadFile({
+        url: `${API_BASE}/me/avatar`,
+        filePath,
+        name: 'avatar',
+        header: {
+          authorization: `Bearer ${token}`,
         },
-        fail: () => resolve({ nickname: '攀登者', avatarUrl: '' }),
+        success: (res) => {
+          let payload: { avatarUrl?: string; traceId?: string; message?: string } = {}
+          try {
+            payload = JSON.parse(res.data || '{}')
+          } catch (error) {
+            reject(error)
+            return
+          }
+          if (res.statusCode >= 200 && res.statusCode < 300 && payload.avatarUrl) {
+            resolve(payload.avatarUrl)
+            return
+          }
+          reject(new Error(`avatar upload HTTP ${res.statusCode}: ${payload.message || payload.traceId || res.data}`))
+        },
+        fail: reject,
       })
     })
   },
@@ -1641,21 +1656,18 @@ Page({
 
   async login() {
     try {
-      const [code, profile] = await Promise.all([
-        this.wxLogin(),
-        this.getWechatProfile(),
-      ])
+      const code = await this.wxLogin()
       const res = await this.api<{ token: string; user: { id: string; nickname: string; avatarUrl: string } }>('/auth/wechat-login', 'POST', {
         code,
-        nickname: profile.nickname,
-        avatarUrl: profile.avatarUrl,
+        nickname: '攀登者',
+        avatarUrl: '',
       })
       this.setData({
         loggedIn: true,
         authToken: res.token,
         currentUserId: res.user.id,
         nickname: res.user.nickname,
-        avatarUrl: res.user.avatarUrl || profile.avatarUrl || '',
+        avatarUrl: res.user.avatarUrl || '',
         avatarText: avatarTextFromNickname(res.user.nickname),
       })
       await this.loadAppData()
@@ -1671,6 +1683,7 @@ Page({
       authToken: '',
       currentUserId: '',
       nickname: '山野同伴',
+      nicknameEditing: false,
       avatarUrl: '',
       avatarText: avatarTextFromNickname('山野同伴'),
       events: [],
@@ -1705,16 +1718,60 @@ Page({
     })
   },
 
-  onAvatarError() {
-    this.setData({ avatarUrl: '' })
+  startNicknameEdit() {
+    if (!this.ensureLogin()) return
+    this.setData({ nicknameEditing: true })
+  },
+
+  onAvatarError(event?: unknown) {
+    console.warn('[avatar load failed]', {
+      avatarUrl: (this.data as { avatarUrl: string }).avatarUrl,
+      event,
+    })
+  },
+
+  async onChooseAvatar(event: { detail: { avatarUrl?: string } }) {
+    if (!this.ensureLogin()) return
+    const avatarUrl = event.detail.avatarUrl || ''
+    if (!avatarUrl) return
+    this.setData({ avatarUrl })
+    try {
+      const storedAvatarUrl = await this.uploadAvatar(avatarUrl)
+      this.setData({ avatarUrl: storedAvatarUrl })
+      this.toast('头像已保存')
+    } catch (error) {
+      console.error('[avatar save failed]', {
+        avatarUrl,
+        error,
+      })
+      this.toast('头像已选择，保存失败')
+    }
   },
 
   async saveNickname() {
     if (!this.ensureLogin()) return
-    const nickname = (this.data as { nickname: string }).nickname.trim()
-    if (!nickname) return
-    await this.api('/me/profile', 'PATCH', { nickname })
-    this.toast('昵称已保存')
+    await this.saveProfile('昵称已保存', true)
+  },
+
+  async saveProfile(successTitle?: string, endNicknameEdit = false) {
+    if (!this.ensureLogin()) return
+    const data = this.data as { nickname: string; avatarUrl: string }
+    const nickname = data.nickname.trim()
+    if (!nickname) {
+      if (endNicknameEdit) this.setData({ nicknameEditing: false })
+      return
+    }
+    const res = await this.api<{ user: { nickname: string; avatarUrl: string } }>('/me/profile', 'PATCH', {
+      nickname,
+      avatarUrl: data.avatarUrl || '',
+    })
+    this.setData({
+      nickname: res.user.nickname,
+      avatarUrl: res.user.avatarUrl || data.avatarUrl || '',
+      avatarText: avatarTextFromNickname(res.user.nickname),
+      ...(endNicknameEdit ? { nicknameEditing: false } : {}),
+    })
+    if (successTitle) this.toast(successTitle)
   },
 
   onGearIconChange(event: PickerEventLike) {

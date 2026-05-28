@@ -1,6 +1,10 @@
 import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import multer from 'multer';
 import { nanoid } from 'nanoid';
 import { z } from 'zod';
 import { pool, tx, type DbClient } from './db.js';
@@ -16,7 +20,9 @@ type AuthedRequest = express.Request & {
 };
 
 const app = express();
+const serverRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 app.use((req: AuthedRequest, res, next) => {
@@ -56,6 +62,42 @@ function apiError(status: number, message: string) {
   error.status = status;
   return error;
 }
+
+const uploadRoot = path.resolve(process.env.UPLOAD_DIR ?? path.join(serverRoot, 'uploads'));
+const avatarUploadDir = path.join(uploadRoot, 'avatars');
+const avatarMimeExtensions: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp'
+};
+
+const avatarUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, callback) => {
+      fs.mkdir(avatarUploadDir, { recursive: true }, (error) => callback(error, avatarUploadDir));
+    },
+    filename: (req, file, callback) => {
+      const extension = avatarMimeExtensions[file.mimetype] ?? 'jpg';
+      const uid = (req as AuthedRequest).user?.id ?? 'unknown';
+      callback(null, `${uid}_${Date.now()}_${nanoid(8)}.${extension}`);
+    }
+  }),
+  limits: {
+    fileSize: 4 * 1024 * 1024
+  },
+  fileFilter: (_req, file, callback) => {
+    if (!avatarMimeExtensions[file.mimetype]) {
+      callback(apiError(400, 'unsupported avatar type'));
+      return;
+    }
+    callback(null, true);
+  }
+});
+
+app.use('/uploads', express.static(uploadRoot, {
+  immutable: true,
+  maxAge: '30d'
+}));
 
 async function requireAuth(req: AuthedRequest, _res: express.Response, next: express.NextFunction) {
   const token = req.header('authorization')?.replace(/^Bearer\s+/i, '');
@@ -239,14 +281,39 @@ app.post('/gear-types', asyncRoute(async (req: AuthedRequest, res) => {
 
 app.use('/me', requireAuth);
 app.patch('/me/profile', asyncRoute(async (req: AuthedRequest, res) => {
-  const body = z.object({ nickname }).parse(req.body);
+  const body = z.object({
+    nickname,
+    avatarUrl: avatarUrl.optional()
+  }).parse(req.body);
   const result = await pool.query(
-    `UPDATE users SET nickname = $1, updated_at = now()
-     WHERE id = $2
+    `UPDATE users
+     SET nickname = $1,
+         avatar_url = COALESCE(NULLIF($2, ''), avatar_url),
+         updated_at = now()
+     WHERE id = $3
      RETURNING id, nickname, avatar_url AS "avatarUrl"`,
-    [body.nickname, userId(req)]
+    [body.nickname, body.avatarUrl ?? null, userId(req)]
   );
   res.json({ user: result.rows[0] });
+}));
+
+app.post('/me/avatar', avatarUpload.single('avatar'), asyncRoute(async (req: AuthedRequest, res) => {
+  if (!req.file) throw apiError(400, 'avatar file is required');
+
+  const publicBaseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+  const avatarPath = `/uploads/avatars/${req.file.filename}`;
+  const storedAvatarUrl = `${publicBaseUrl}${avatarPath}`;
+  const result = await pool.query(
+    `UPDATE users SET avatar_url = $1, updated_at = now()
+     WHERE id = $2
+     RETURNING id, nickname, avatar_url AS "avatarUrl"`,
+    [storedAvatarUrl, userId(req)]
+  );
+
+  res.status(201).json({
+    avatarUrl: storedAvatarUrl,
+    user: result.rows[0]
+  });
 }));
 
 app.get('/me/gears', asyncRoute(async (req: AuthedRequest, res) => {
@@ -862,6 +929,11 @@ app.use((error: Error & { status?: number }, req: AuthedRequest, res: express.Re
   if (error instanceof z.ZodError) {
     logError(error, req, 400, error.issues);
     res.status(400).json({ error: 'VALIDATION_ERROR', message: '请求参数不合法', traceId });
+    return;
+  }
+  if (error instanceof multer.MulterError) {
+    logError(error, req, 400);
+    res.status(400).json({ error: 'BAD_REQUEST', message: '请求无法处理', traceId });
     return;
   }
   const status = error.status ?? 500;

@@ -62,6 +62,7 @@ afterEach(() => {
 });
 
 afterAll(async () => {
+  await fs.rm(path.join(root, 'uploads'), { recursive: true, force: true });
   await pool.end();
 });
 
@@ -135,14 +136,44 @@ describe('health and auth', () => {
     await request(app)
       .patch('/me/profile')
       .set('authorization', auth(first.token))
-      .send({ nickname: '自定义昵称' })
+      .send({ nickname: '自定义昵称', avatarUrl: 'https://example.com/custom.png' })
       .expect(200);
 
     const second = await login('profile-user', 'Wechat Name Again', 'https://example.com/second.png');
 
     expect(second.userId).toBe(first.userId);
     expect(second.nickname).toBe('自定义昵称');
-    expect(second.avatarUrl).toBe('https://example.com/first.png');
+    expect(second.avatarUrl).toBe('https://example.com/custom.png');
+  });
+
+  it('keeps the existing avatar when profile updates omit avatarUrl', async () => {
+    const first = await login('profile-avatar-user', 'Wechat Name', 'https://example.com/first.png');
+    const profile = await request(app)
+      .patch('/me/profile')
+      .set('authorization', auth(first.token))
+      .send({ nickname: '只改昵称' })
+      .expect(200);
+
+    expect(profile.body.user.nickname).toBe('只改昵称');
+    expect(profile.body.user.avatarUrl).toBe('https://example.com/first.png');
+  });
+
+  it('uploads and stores user avatars', async () => {
+    const alice = await login('avatar-upload-user', 'Alice');
+    const upload = await request(app)
+      .post('/me/avatar')
+      .set('authorization', auth(alice.token))
+      .attach('avatar', Buffer.from([0x89, 0x50, 0x4e, 0x47]), {
+        filename: 'avatar.png',
+        contentType: 'image/png'
+      })
+      .expect(201);
+
+    expect(upload.body.avatarUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/uploads\/avatars\/usr_/);
+    expect(upload.body.user.avatarUrl).toBe(upload.body.avatarUrl);
+
+    const storedPath = new URL(upload.body.avatarUrl).pathname;
+    await request(app).get(storedPath).expect(200);
   });
 });
 
