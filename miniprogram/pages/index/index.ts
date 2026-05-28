@@ -832,6 +832,11 @@ Page({
   switchTab(event: TouchEventLike) {
     const tab = String(event.currentTarget.dataset.tab || 'calendar') as TabKey
     if (tab !== 'basecamp' && !this.ensureLogin()) return
+    const current = this.data as { activeTab: TabKey; selectedTeamId: string }
+    if (tab === 'team' && current.activeTab === 'team' && current.selectedTeamId) {
+      this.backToTeamList()
+      return
+    }
     const titleMap: Record<TabKey, string> = {
       calendar: 'Calendar',
       team: 'Team',
