@@ -318,11 +318,12 @@ app.post('/me/avatar', avatarUpload.single('avatar'), asyncRoute(async (req: Aut
 
 app.get('/me/gears', asyncRoute(async (req: AuthedRequest, res) => {
   const result = await pool.query(
-    `SELECT ug.id, ug.gear_type_id AS "gearTypeId", gt.icon_key AS "iconKey", ug.name, ug.quantity
+    `SELECT ug.id, ug.gear_type_id AS "gearTypeId", gt.icon_key AS "iconKey", ug.name, ug.quantity,
+            ug.display_order AS "displayOrder"
      FROM user_gears ug
      JOIN gear_types gt ON gt.id = ug.gear_type_id
      WHERE ug.user_id = $1
-     ORDER BY ug.created_at DESC`,
+     ORDER BY ug.display_order ASC, ug.created_at DESC`,
     [userId(req)]
   );
   res.json({ gears: result.rows });
@@ -336,12 +337,56 @@ app.post('/me/gears', asyncRoute(async (req: AuthedRequest, res) => {
   }).parse(req.body);
 
   const result = await pool.query(
-    `INSERT INTO user_gears (id, user_id, gear_type_id, name, quantity)
-     VALUES ($1, $2, $3, $4, $5)
-     RETURNING id, gear_type_id AS "gearTypeId", name, quantity`,
+    `INSERT INTO user_gears (id, user_id, gear_type_id, name, quantity, display_order)
+     VALUES (
+       $1,
+       $2,
+       $3,
+       $4,
+       $5,
+       COALESCE((SELECT min(display_order) - 1000 FROM user_gears WHERE user_id = $2), 0)
+     )
+     RETURNING id, gear_type_id AS "gearTypeId", name, quantity, display_order AS "displayOrder"`,
     [id('ug'), userId(req), body.gearTypeId, body.name, body.quantity]
   );
   res.status(201).json({ gear: result.rows[0] });
+}));
+
+app.patch('/me/gears/order', asyncRoute(async (req: AuthedRequest, res) => {
+  const body = z.object({
+    gearIds: z.array(idText).min(1).max(200)
+  }).parse(req.body);
+  const uniqueIds = Array.from(new Set(body.gearIds));
+  if (uniqueIds.length !== body.gearIds.length) throw apiError(400, 'duplicate gear ids');
+
+  const uid = userId(req);
+  const gears = await tx(async (client) => {
+    const owned = await client.query('SELECT id FROM user_gears WHERE user_id = $1', [uid]);
+    const ownedIds = new Set(owned.rows.map((item) => item.id as string));
+    if (ownedIds.size !== uniqueIds.length || uniqueIds.some((gearId) => !ownedIds.has(gearId))) {
+      throw apiError(400, 'gear order must include all owned gears');
+    }
+
+    for (const [index, gearId] of uniqueIds.entries()) {
+      await client.query(
+        'UPDATE user_gears SET display_order = $1, updated_at = now() WHERE id = $2 AND user_id = $3',
+        [(index + 1) * 1000, gearId, uid]
+      );
+    }
+
+    const result = await client.query(
+      `SELECT ug.id, ug.gear_type_id AS "gearTypeId", gt.icon_key AS "iconKey", ug.name, ug.quantity,
+              ug.display_order AS "displayOrder"
+       FROM user_gears ug
+       JOIN gear_types gt ON gt.id = ug.gear_type_id
+       WHERE ug.user_id = $1
+       ORDER BY ug.display_order ASC, ug.created_at DESC`,
+      [uid]
+    );
+    return result.rows;
+  });
+
+  res.json({ gears });
 }));
 
 app.patch('/me/gears/:gearId', asyncRoute(async (req: AuthedRequest, res) => {
@@ -355,7 +400,7 @@ app.patch('/me/gears/:gearId', asyncRoute(async (req: AuthedRequest, res) => {
     `UPDATE user_gears
      SET name = COALESCE($1, name), quantity = COALESCE($2, quantity), updated_at = now()
      WHERE id = $3 AND user_id = $4
-     RETURNING id, gear_type_id AS "gearTypeId", name, quantity`,
+     RETURNING id, gear_type_id AS "gearTypeId", name, quantity, display_order AS "displayOrder"`,
     [body.name, body.quantity, req.params.gearId, userId(req)]
   );
   if (!result.rowCount) throw apiError(404, 'gear not found');
@@ -594,12 +639,13 @@ app.get('/teams/:teamId/members', asyncRoute(async (req: AuthedRequest, res) => 
     [teamId]
   );
   const gears = await pool.query(
-    `SELECT ug.user_id AS "userId", ug.id, ug.name, ug.quantity AS count, gt.icon_key AS icon, ug.gear_type_id AS "gearTypeId"
+    `SELECT ug.user_id AS "userId", ug.id, ug.name, ug.quantity AS count, gt.icon_key AS icon,
+            ug.gear_type_id AS "gearTypeId", ug.display_order AS "displayOrder"
      FROM user_gears ug
      JOIN gear_types gt ON gt.id = ug.gear_type_id
      JOIN team_members tm ON tm.user_id = ug.user_id
      WHERE tm.team_id = $1 AND tm.left_at IS NULL
-     ORDER BY ug.created_at DESC`,
+     ORDER BY ug.display_order ASC, ug.created_at DESC`,
     [teamId]
   );
   const gearByUser = new Map<string, unknown[]>();

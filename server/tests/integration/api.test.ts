@@ -243,6 +243,51 @@ describe('BaseCamp gear', () => {
     const gears = await request(app).get('/me/gears').set('authorization', auth(alice.token)).expect(200);
     expect(gears.body.gears).toHaveLength(0);
   });
+
+  it('persists custom user gear order', async () => {
+    const alice = await login('alice-gear-order', 'Alice');
+    const bob = await login('bob-gear-order', 'Bob');
+
+    const rope = await request(app)
+      .post('/me/gears')
+      .set('authorization', auth(alice.token))
+      .send({ gearTypeId: 'gear_rope', name: '绳索', quantity: 1 })
+      .expect(201);
+    const lock = await request(app)
+      .post('/me/gears')
+      .set('authorization', auth(alice.token))
+      .send({ gearTypeId: 'gear_locking_carabiner', name: '主锁', quantity: 2 })
+      .expect(201);
+    const quickdraw = await request(app)
+      .post('/me/gears')
+      .set('authorization', auth(alice.token))
+      .send({ gearTypeId: 'gear_quickdraw', name: '快挂', quantity: 12 })
+      .expect(201);
+
+    const initial = await request(app).get('/me/gears').set('authorization', auth(alice.token)).expect(200);
+    expect(initial.body.gears.map((item: { id: string }) => item.id)).toEqual([
+      quickdraw.body.gear.id,
+      lock.body.gear.id,
+      rope.body.gear.id
+    ]);
+
+    const orderedIds = [lock.body.gear.id, rope.body.gear.id, quickdraw.body.gear.id];
+    const reordered = await request(app)
+      .patch('/me/gears/order')
+      .set('authorization', auth(alice.token))
+      .send({ gearIds: orderedIds })
+      .expect(200);
+    expect(reordered.body.gears.map((item: { id: string }) => item.id)).toEqual(orderedIds);
+
+    const persisted = await request(app).get('/me/gears').set('authorization', auth(alice.token)).expect(200);
+    expect(persisted.body.gears.map((item: { id: string }) => item.id)).toEqual(orderedIds);
+
+    await request(app)
+      .patch('/me/gears/order')
+      .set('authorization', auth(bob.token))
+      .send({ gearIds: orderedIds })
+      .expect(400);
+  });
 });
 
 describe('personal calendar events', () => {

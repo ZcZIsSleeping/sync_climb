@@ -220,7 +220,7 @@
       <view wx:if="{{showTeamTodayButton}}" class="today-float-button team-today-float-button" bindtap="scrollToTeamTodayMonth">今</view>
     </view>
 
-    <scroll-view wx:if="{{activeTab === 'basecamp'}}" class="basecamp-scroll" scroll-y="true" enhanced="true">
+    <scroll-view wx:if="{{activeTab === 'basecamp'}}" class="basecamp-scroll" scroll-y="{{basecampScrollEnabled}}" enhanced="true">
       <view class="basecamp-content {{loggedIn ? 'basecamp-content--logged-in' : 'basecamp-content--logged-out'}}">
         <view class="profile-panel {{loggedIn ? 'profile-panel--logged-in' : 'profile-panel--logged-out'}}">
           <view wx:if="{{!loggedIn}}" class="login-empty">
@@ -261,7 +261,17 @@
           </view>
 
           <view class="gear-list">
-            <view class="gear-card" wx:for="{{gearItems}}" wx:key="id">
+            <view
+              id="gear-slot-{{item.id}}"
+              class="gear-card {{gearDragId === item.id ? 'gear-card--drag-placeholder' : ''}}"
+              wx:for="{{gearItems}}"
+              wx:key="id"
+              data-id="{{item.id}}"
+              bindlongpress="onGearLongPress"
+              bindtouchmove="onGearTouchMove"
+              bindtouchend="onGearTouchEnd"
+              bindtouchcancel="onGearTouchEnd"
+            >
               <view class="gear-card-main">
                 <view class="gear-card-icon">
                   <image wx:if="{{item.iconUrl}}" class="gear-icon-image" src="{{item.iconUrl}}" mode="aspectFit" />
@@ -280,6 +290,18 @@
         </view>
       </view>
     </scroll-view>
+    <view wx:if="{{gearDragActive && gearDragGhostItem}}" class="gear-drag-ghost" style="{{gearDragGhostStyle}}">
+      <view class="gear-card-main">
+        <view class="gear-card-icon">
+          <image wx:if="{{gearDragGhostItem.iconUrl}}" class="gear-icon-image" src="{{gearDragGhostItem.iconUrl}}" mode="aspectFit" />
+          <text wx:else>{{gearDragGhostItem.icon}}</text>
+        </view>
+        <text class="gear-card-name">{{gearDragGhostItem.name}}</text>
+      </view>
+      <view class="gear-controls">
+        <view class="gear-count">{{gearDragGhostItem.count}}</view>
+      </view>
+    </view>
 
     <view class="tabbar">
       <view class="tab-item {{activeTab === 'calendar' ? 'tab-item--active' : ''}}" data-tab="calendar" bindtap="switchTab">

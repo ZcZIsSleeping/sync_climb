@@ -100,6 +100,7 @@ type GearItem = {
   icon: string
   iconUrl: string
   count: number
+  displayOrder?: number
   gearTypeId?: string
   userGearId?: string
 }
@@ -481,6 +482,11 @@ Page({
     selectedGearIconLabel: GEAR_ICON_OPTIONS[0].label,
     newGearName: '',
     gearItems: [] as GearItem[],
+    gearDragActive: false,
+    gearDragId: '',
+    gearDragGhostItem: null as GearItem | null,
+    gearDragGhostStyle: '',
+    basecampScrollEnabled: true,
     newTeamName: '',
     joinRoomCode: '',
     teamEditVisible: false,
@@ -536,6 +542,11 @@ Page({
   eventDragLastDate: '',
   dragCellRects: [] as Rect[],
   selectionCellRects: [] as Rect[],
+  gearDragSlotRects: [] as Rect[],
+  gearDragId: '',
+  gearDragTouchOffsetY: 42,
+  gearDragGhostLeft: 44,
+  gearDragGhostWidth: 0,
   dragVisualPending: false,
   pendingDragGhostStyle: '',
   pendingDropPreviewStyle: '',
@@ -676,6 +687,7 @@ Page({
       icon: item.icon || meta?.icon || iconKey || 'G',
       iconUrl: item.iconUrl || meta?.iconUrl || GEAR_ICON_BY_KEY[iconKey] || '',
       count: item.count ?? item.quantity ?? 0,
+      displayOrder: item.displayOrder,
       gearTypeId,
       userGearId: item.userGearId || item.id,
     }
@@ -749,6 +761,11 @@ Page({
   },
 
   async loadTeamDetailData(teamId: string) {
+    await this.loadTeamMembers(teamId)
+    await this.loadTeamEvents(teamId)
+  },
+
+  async loadTeamMembers(teamId: string) {
     const members = await this.api<{ members: any[] }>(`/teams/${teamId}/members`)
     const teamMembers = members.members.map((item, index) => ({
       id: item.id,
@@ -758,8 +775,7 @@ Page({
       color: COLORS[index % COLORS.length],
       gear: (item.gear || []).map((gear: any) => this.mapApiGear(gear)),
     }))
-    this.setData({ teamMembers, filteredTeamMembers: teamMembers })
-    await this.loadTeamEvents(teamId)
+    this.setData({ teamMembers, filteredTeamMembers: teamMembers, teamSearchId: '' })
   },
 
   async loadTeamEvents(teamId: string) {
@@ -1068,11 +1084,18 @@ Page({
     })
   },
 
-  toggleTeamGearPanel() {
+  async toggleTeamGearPanel() {
     if (!this.ensureLogin()) return
-    const data = this.data as { teamGearExpanded: boolean }
+    const data = this.data as { teamGearExpanded: boolean; selectedTeamId: string }
     if (!data.teamGearExpanded) {
       this.setData({ teamGearExpanded: true, teamGearClosing: false })
+      if (data.selectedTeamId) {
+        try {
+          await this.loadTeamMembers(data.selectedTeamId)
+        } catch (error) {
+          this.toast('团队装备刷新失败')
+        }
+      }
       return
     }
     this.setData({ teamGearClosing: true })
@@ -2052,6 +2075,96 @@ Page({
       selectedGearIconUrl: GEAR_ICON_OPTIONS[0].iconUrl,
       selectedGearIconLabel: GEAR_ICON_OPTIONS[0].label,
     })
+  },
+
+  onGearLongPress(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
+    const id = String(event.currentTarget.dataset.id || '')
+    const gearItems = (this.data as { gearItems: GearItem[] }).gearItems
+    const item = gearItems.find((gear) => gear.id === id)
+    const touch = event.touches[0] || event.changedTouches?.[0]
+    if (!item || !touch) return
+    wx.vibrateShort({ type: 'light' })
+    this.gearDragId = id
+    wx.createSelectorQuery()
+      .select(`#gear-slot-${id}`)
+      .boundingClientRect((rect) => {
+        if (!rect) return
+        this.gearDragTouchOffsetY = Math.max(0, touch.clientY - rect.top)
+        this.gearDragGhostLeft = rect.left
+        this.gearDragGhostWidth = rect.width
+        this.cacheGearDragSlotRects()
+        this.setData({
+          gearDragActive: true,
+          gearDragId: id,
+          gearDragGhostItem: item,
+          gearDragGhostStyle: this.gearDragGhostStyle(touch.clientY),
+          basecampScrollEnabled: false,
+        })
+      })
+      .exec()
+  },
+
+  onGearTouchMove(event: TouchEventLike) {
+    if (!this.gearDragId) return
+    const touch = event.touches[0]
+    if (!touch) return
+    this.setData({ gearDragGhostStyle: this.gearDragGhostStyle(touch.clientY) })
+    const targetIndex = this.gearDragTargetIndex(touch.clientY)
+    if (targetIndex < 0) return
+    const gearItems = [...(this.data as { gearItems: GearItem[] }).gearItems]
+    const currentIndex = gearItems.findIndex((item) => item.id === this.gearDragId)
+    if (currentIndex < 0 || currentIndex === targetIndex) return
+    const [dragged] = gearItems.splice(currentIndex, 1)
+    gearItems.splice(targetIndex, 0, dragged)
+    this.setData({ gearItems })
+  },
+
+  async onGearTouchEnd() {
+    if (!this.gearDragId) return
+    const gearItems = (this.data as { gearItems: GearItem[] }).gearItems
+    this.gearDragId = ''
+    this.gearDragSlotRects = []
+    this.gearDragTouchOffsetY = 42
+    this.gearDragGhostLeft = 44
+    this.gearDragGhostWidth = 0
+    this.setData({
+      gearDragActive: false,
+      gearDragId: '',
+      gearDragGhostItem: null,
+      gearDragGhostStyle: '',
+      basecampScrollEnabled: true,
+    })
+    try {
+      const res = await this.api<{ gears: any[] }>('/me/gears/order', 'PATCH', { gearIds: gearItems.map((item) => item.id) })
+      this.setData({ gearItems: res.gears.map((item) => this.mapApiGear(item)) })
+    } catch (error) {
+      this.toast('装备排序保存失败')
+      await this.loadGearItems()
+    }
+  },
+
+  cacheGearDragSlotRects() {
+    wx.createSelectorQuery()
+      .selectAll('.gear-card')
+      .boundingClientRect((rects) => {
+        this.gearDragSlotRects = rects
+          .filter((rect) => rect.id)
+          .sort((a, b) => a.top - b.top)
+      })
+      .exec()
+  },
+
+  gearDragTargetIndex(y: number): number {
+    if (!this.gearDragSlotRects.length) return -1
+    const matchIndex = this.gearDragSlotRects.findIndex((rect) => y < rect.top + rect.height / 2)
+    return matchIndex >= 0 ? matchIndex : this.gearDragSlotRects.length - 1
+  },
+
+  gearDragGhostStyle(y: number): string {
+    const top = Math.max(12, y - this.gearDragTouchOffsetY)
+    const width = this.gearDragGhostWidth ? `width:${this.gearDragGhostWidth}px;` : 'right:44rpx;'
+    return `left:${this.gearDragGhostLeft}px;top:${top}px;${width}`
   },
 
   async decreaseGear(event: TouchEventLike) {
