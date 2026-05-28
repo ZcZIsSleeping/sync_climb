@@ -277,7 +277,7 @@ describe('BaseCamp gear', () => {
       .set('authorization', auth(alice.token))
       .send({ gearIds: orderedIds })
       .expect(200);
-    expect(reordered.body.gears.map((item: { id: string }) => item.id)).toEqual(orderedIds);
+    expect(reordered.body).toEqual({ ok: true });
 
     const persisted = await request(app).get('/me/gears').set('authorization', auth(alice.token)).expect(200);
     expect(persisted.body.gears.map((item: { id: string }) => item.id)).toEqual(orderedIds);

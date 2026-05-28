@@ -84,6 +84,8 @@ type BuildMonthOptions = {
   maxVisibleEvents: number
 }
 
+type EventsByDate = Record<string, ClimbEvent[]>
+
 type EventPreview = ClimbEvent & {
   range: string
 }
@@ -176,7 +178,7 @@ const MONTH_NAMES = [
   'December',
 ]
 
-const API_BASE = 'https://www.synclimb.online'
+const API_BASE = 'http://localhost:8787'
 const COLORS: Array<'blue' | 'pink' | 'green' | 'violet'> = ['blue', 'pink', 'green', 'violet']
 const GEAR_TYPE_BY_LABEL: Record<string, string> = {
   快挂: 'gear_quickdraw',
@@ -250,14 +252,30 @@ function durationDays(event: ClimbEvent): number {
   return Math.round((dateFromKey(event.end).getTime() - dateFromKey(event.start).getTime()) / DAY_MS) + 1
 }
 
+function compareEventsForDisplay(a: ClimbEvent, b: ClimbEvent): number {
+  const byDuration = durationDays(b) - durationDays(a)
+  if (byDuration !== 0) return byDuration
+  return b.createdAt - a.createdAt
+}
+
+function buildEventsByDate(events: ClimbEvent[]): EventsByDate {
+  const indexed: EventsByDate = {}
+  events.forEach((event) => {
+    let current = dateFromKey(event.start)
+    const end = dateFromKey(event.end)
+    while (current <= end) {
+      const key = dateKey(current)
+      if (!indexed[key]) indexed[key] = []
+      indexed[key].push(event)
+      current = addDays(current, 1)
+    }
+  })
+  Object.keys(indexed).forEach((key) => indexed[key].sort(compareEventsForDisplay))
+  return indexed
+}
+
 function sortedEventsForDate(events: ClimbEvent[], date: string): ClimbEvent[] {
-  return events
-    .filter((event) => event.start <= date && event.end >= date)
-    .sort((a, b) => {
-      const byDuration = durationDays(b) - durationDays(a)
-      if (byDuration !== 0) return byDuration
-      return b.createdAt - a.createdAt
-    })
+  return buildEventsByDate(events)[date] || []
 }
 
 function inRange(date: string, start: string, end: string): boolean {
@@ -285,15 +303,16 @@ function buildMonths(
   const now = new Date()
   const anchor = new Date(now.getFullYear(), now.getMonth() + startOffset, 1)
   const months: CalendarMonth[] = []
+  const eventsByDate = buildEventsByDate(events)
   for (let i = 0; i < monthCount; i += 1) {
-    months.push(buildMonth(addMonths(anchor, i), events, selectingStart, selectingEnd, options))
+    months.push(buildMonth(addMonths(anchor, i), eventsByDate, selectingStart, selectingEnd, options))
   }
   return months
 }
 
 function buildMonth(
   monthDate: Date,
-  events: ClimbEvent[],
+  eventsByDate: EventsByDate,
   selectingStart: string,
   selectingEnd: string,
   options: BuildMonthOptions,
@@ -313,7 +332,7 @@ function buildMonth(
       const current = addDays(weekStartDate, dayIndex)
       const key = dateKey(current)
       const inMonth = current.getMonth() === monthDate.getMonth()
-      const count = inMonth ? sortedEventsForDate(events, key).length : 0
+      const count = inMonth ? (eventsByDate[key] || []).length : 0
       days.push({
         date: key,
         day: current.getDate(),
@@ -327,8 +346,8 @@ function buildMonth(
 
     weeks.push({
       days,
-      segments: buildWeekSegments(weekStartDate, monthStartKey, monthEndKey, events, options.maxVisibleEvents),
-      moreMarkers: buildWeekMoreMarkers(weekStartDate, monthStartKey, monthEndKey, events, options.maxVisibleEvents),
+      segments: buildWeekSegments(weekStartDate, monthStartKey, monthEndKey, eventsByDate, options.maxVisibleEvents),
+      moreMarkers: buildWeekMoreMarkers(weekStartDate, monthStartKey, monthEndKey, eventsByDate, options.maxVisibleEvents),
     })
   }
 
@@ -343,7 +362,7 @@ function buildWeekSegments(
   weekStartDate: Date,
   monthStart: string,
   monthEnd: string,
-  events: ClimbEvent[],
+  eventsByDate: EventsByDate,
   maxVisibleEvents: number,
 ): EventSegment[] {
   const weekStart = dateKey(weekStartDate)
@@ -355,7 +374,7 @@ function buildWeekSegments(
   for (let i = 0; i < 7; i += 1) {
     const day = dateKey(addDays(weekStartDate, i))
     if (day < visibleStart || day > visibleEnd) continue
-    sortedEventsForDate(events, day)
+    ;(eventsByDate[day] || [])
       .slice(0, maxVisibleEvents)
       .forEach((event, row) => {
         placements.push({ event, row, dayIndex: i, day })
@@ -418,14 +437,14 @@ function buildWeekMoreMarkers(
   weekStartDate: Date,
   monthStart: string,
   monthEnd: string,
-  events: ClimbEvent[],
+  eventsByDate: EventsByDate,
   maxVisibleEvents: number,
 ): MoreMarker[] {
   const markers: MoreMarker[] = []
   for (let i = 0; i < 7; i += 1) {
     const day = dateKey(addDays(weekStartDate, i))
     if (day < monthStart || day > monthEnd) continue
-    const count = sortedEventsForDate(events, day).length
+    const count = (eventsByDate[day] || []).length
     if (count <= maxVisibleEvents) continue
     markers.push({
       date: day,
@@ -547,6 +566,16 @@ Page({
   gearDragTouchOffsetY: 42,
   gearDragGhostLeft: 44,
   gearDragGhostWidth: 0,
+  gearQuantityTimers: {} as Record<string, ReturnType<typeof setTimeout>>,
+  gearPendingQuantities: {} as Record<string, number>,
+  gearSubmittingQuantities: {} as Record<string, boolean>,
+  gearSyncFailedIds: {} as Record<string, boolean>,
+  gearDragVisualPending: false,
+  pendingGearDragGhostStyle: '',
+  originalNickname: '山野同伴',
+  originalAvatarUrl: '',
+  originalTeamName: '',
+  eventGearSnapshot: {} as Record<string, number>,
   dragVisualPending: false,
   pendingDragGhostStyle: '',
   pendingDropPreviewStyle: '',
@@ -558,6 +587,14 @@ Page({
     this.refreshMonths()
     this.refreshTeamMonths()
     setTimeout(() => this.scrollToTodayMonth(), 80)
+  },
+
+  onHide() {
+    void this.flushPendingGearQuantities()
+  },
+
+  onUnload() {
+    void this.flushPendingGearQuantities()
   },
 
   setupSafeArea() {
@@ -743,8 +780,10 @@ Page({
   },
 
   async loadCalendarEvents() {
+    const startedAt = Date.now()
     const range = apiCalendarRange()
     const res = await this.api<{ events: any[] }>(`/me/calendar/events?start=${range.start}&end=${range.end}`)
+    console.info('[perf] loadCalendarEvents', { durationMs: Date.now() - startedAt, count: res.events.length })
     this.setData({ events: res.events.map((item, index) => this.mapApiEvent(item, index)) }, () => this.refreshMonths())
   },
 
@@ -779,11 +818,13 @@ Page({
   },
 
   async loadTeamEvents(teamId: string) {
+    const startedAt = Date.now()
     const range = apiCalendarRange()
     const res = await this.api<{ events: any[] }>(
       `/teams/${teamId}/calendar/events?start=${range.start}&end=${range.end}&onlyTeamEvents=${(this.data as { teamOnlyFilter: boolean }).teamOnlyFilter}`,
     )
     const events = res.events.map((item, index) => this.mapApiTeamEvent(item, index))
+    console.info('[perf] loadTeamEvents', { durationMs: Date.now() - startedAt, count: events.length, teamId })
     this.setData({ teamEvents: events }, () => this.refreshTeamMonths())
   },
 
@@ -824,15 +865,19 @@ Page({
       selectedTeam,
       teamName: selectedTeam.name,
     })
+    this.originalTeamName = selectedTeam.name
     if (!changedTeamId || changedTeamId === selectedTeamId) {
       await this.loadTeamEvents(selectedTeamId)
     }
   },
 
-  switchTab(event: TouchEventLike) {
+  async switchTab(event: TouchEventLike) {
     const tab = String(event.currentTarget.dataset.tab || 'calendar') as TabKey
     if (tab !== 'basecamp' && !this.ensureLogin()) return
     const current = this.data as { activeTab: TabKey; selectedTeamId: string }
+    if (current.activeTab === 'basecamp' && tab !== 'basecamp') {
+      await this.flushPendingGearQuantities()
+    }
     if (tab === 'team' && current.activeTab === 'team' && current.selectedTeamId) {
       this.backToTeamList()
       return
@@ -861,6 +906,7 @@ Page({
   },
 
   refreshTeamMonths() {
+    const startedAt = Date.now()
     const data = this.data as {
       teamEvents: TeamCalendarEvent[]
       teamMonthCount: number
@@ -873,9 +919,11 @@ Page({
     this.setData({
       teamMonths: buildMonths(events, data.teamMonthCount, data.teamSelectingStart, data.teamSelectingEnd, { maxVisibleEvents: 3 }, data.teamMonthStartOffset),
     })
+    console.info('[perf] refreshTeamMonths', { durationMs: Date.now() - startedAt, monthCount: data.teamMonthCount, eventCount: events.length })
   },
 
   refreshMonths() {
+    const startedAt = Date.now()
     const data = this.data as {
       events: ClimbEvent[]
       monthCount: number
@@ -886,6 +934,7 @@ Page({
     this.setData({
       months: buildMonths(data.events, data.monthCount, data.selectingStart, data.selectingEnd, { maxVisibleEvents: 2 }, data.monthStartOffset),
     })
+    console.info('[perf] refreshMonths', { durationMs: Date.now() - startedAt, monthCount: data.monthCount, eventCount: data.events.length })
   },
 
   onScrollToLower() {
@@ -965,11 +1014,13 @@ Page({
       teamDayPreviewDate: '',
       teamDetailEvent: null,
     })
+    this.originalTeamName = team.name
     await this.loadTeamDetailData(id)
     this.scrollToTeamTodayMonth()
   },
 
   backToTeamList() {
+    this.originalTeamName = ''
     this.setData({
       selectedTeamId: '',
       selectedTeam: null,
@@ -1064,10 +1115,18 @@ Page({
 
   saveTeamName() {
     if (!this.ensureLogin()) return
-    const data = this.data as { selectedTeamId: string; teamName: string }
-    if (!data.selectedTeamId || !data.teamName.trim()) return
-    this.api(`/teams/${data.selectedTeamId}`, 'PATCH', { name: data.teamName.trim() })
-      .then(() => this.refreshAfterTeamStateChanged(data.selectedTeamId))
+    const data = this.data as { selectedTeamId: string; teamName: string; selectedTeam: TeamCard | null; teams: TeamCard[] }
+    const name = data.teamName.trim()
+    if (!data.selectedTeamId || !name) return
+    if (name === this.originalTeamName) return
+    this.api(`/teams/${data.selectedTeamId}`, 'PATCH', { name })
+      .then(() => {
+        this.originalTeamName = name
+        this.setData({
+          selectedTeam: data.selectedTeam ? { ...data.selectedTeam, name } : null,
+          teams: data.teams.map((item) => (item.id === data.selectedTeamId ? { ...item, name } : item)),
+        })
+      })
       .catch(() => this.toast('团队名保存失败'))
   },
 
@@ -1251,13 +1310,15 @@ Page({
       creator: detail.event.creatorName || found.creator,
       gearSummary: (detail.gearSummary || []).map((item) => this.mapApiGear({ ...item, id: item.gearTypeId, count: item.quantity })),
     }
+    const memberGearEditors = this.buildMemberGearEditors(
+      eventWithGear,
+      detail.participants.map((item) => item.userId),
+      detail.requirements || [],
+    )
+    this.eventGearSnapshot = this.snapshotEventGearRequirements(memberGearEditors)
     this.setData({
       teamDetailEvent: eventWithGear,
-      memberGearEditors: this.buildMemberGearEditors(
-        eventWithGear,
-        detail.participants.map((item) => item.userId),
-        detail.requirements || [],
-      ),
+      memberGearEditors,
       eventGearDirty: false,
     })
   },
@@ -1701,6 +1762,8 @@ Page({
         avatarUrl: res.user.avatarUrl || '',
         avatarText: avatarTextFromNickname(res.user.nickname),
       })
+      this.originalNickname = res.user.nickname
+      this.originalAvatarUrl = res.user.avatarUrl || ''
       await this.loadAppData()
       this.toast(`已登录 ${res.user.nickname}`)
     } catch (error) {
@@ -1708,7 +1771,13 @@ Page({
     }
   },
 
-  logout() {
+  async logout() {
+    await this.flushPendingGearQuantities()
+    this.clearGearQuantityState()
+    this.originalNickname = '山野同伴'
+    this.originalAvatarUrl = ''
+    this.originalTeamName = ''
+    this.eventGearSnapshot = {}
     this.setData({
       loggedIn: false,
       authToken: '',
@@ -1769,6 +1838,7 @@ Page({
     try {
       const storedAvatarUrl = await this.uploadAvatar(avatarUrl)
       this.setData({ avatarUrl: storedAvatarUrl })
+      this.originalAvatarUrl = storedAvatarUrl
       this.toast('头像已保存')
     } catch (error) {
       console.error('[avatar save failed]', {
@@ -1792,10 +1862,16 @@ Page({
       if (endNicknameEdit) this.setData({ nicknameEditing: false })
       return
     }
+    if (nickname === this.originalNickname && (data.avatarUrl || '') === this.originalAvatarUrl) {
+      if (endNicknameEdit) this.setData({ nicknameEditing: false })
+      return
+    }
     const res = await this.api<{ user: { nickname: string; avatarUrl: string } }>('/me/profile', 'PATCH', {
       nickname,
       avatarUrl: data.avatarUrl || '',
     })
+    this.originalNickname = res.user.nickname
+    this.originalAvatarUrl = res.user.avatarUrl || data.avatarUrl || ''
     this.setData({
       nickname: res.user.nickname,
       avatarUrl: res.user.avatarUrl || data.avatarUrl || '',
@@ -1822,6 +1898,74 @@ Page({
     this.setData({ newGearName: event.detail.value })
   },
 
+  clearGearQuantityState() {
+    Object.values(this.gearQuantityTimers).forEach((timer) => clearTimeout(timer))
+    this.gearQuantityTimers = {}
+    this.gearPendingQuantities = {}
+    this.gearSubmittingQuantities = {}
+    this.gearSyncFailedIds = {}
+  },
+
+  scheduleGearQuantitySave(id: string, quantity: number) {
+    this.gearPendingQuantities[id] = quantity
+    this.gearSyncFailedIds[id] = false
+    if (this.gearQuantityTimers[id]) clearTimeout(this.gearQuantityTimers[id])
+    this.gearQuantityTimers[id] = setTimeout(() => {
+      delete this.gearQuantityTimers[id]
+      void this.submitGearQuantity(id)
+    }, 700)
+  },
+
+  async submitGearQuantity(id: string) {
+    if (this.gearSubmittingQuantities[id]) return
+    const quantity = this.gearPendingQuantities[id]
+    if (quantity === undefined) return
+    this.gearSubmittingQuantities[id] = true
+    try {
+      await this.api(`/me/gears/${id}`, 'PATCH', { quantity })
+      if (this.gearPendingQuantities[id] === quantity) {
+        delete this.gearPendingQuantities[id]
+      }
+      this.gearSyncFailedIds[id] = false
+    } catch (error) {
+      this.gearSyncFailedIds[id] = true
+      console.warn('[gear quantity sync failed]', { id, quantity, error })
+    } finally {
+      this.gearSubmittingQuantities[id] = false
+      if (this.gearPendingQuantities[id] !== undefined && this.gearPendingQuantities[id] !== quantity) {
+        void this.submitGearQuantity(id)
+      }
+    }
+  },
+
+  async flushPendingGearQuantities() {
+    const pendingIds = Object.keys(this.gearPendingQuantities)
+    if (!pendingIds.length) return
+    const start = Date.now()
+    pendingIds.forEach((id) => {
+      if (this.gearQuantityTimers[id]) {
+        clearTimeout(this.gearQuantityTimers[id])
+        delete this.gearQuantityTimers[id]
+      }
+    })
+    await Promise.all(pendingIds.map((id) => this.submitGearQuantity(id)))
+    console.info('[perf] flushPendingGearQuantities', {
+      count: pendingIds.length,
+      durationMs: Date.now() - start,
+      failed: Object.values(this.gearSyncFailedIds).filter(Boolean).length,
+    })
+  },
+
+  cancelPendingGearQuantity(id: string) {
+    if (this.gearQuantityTimers[id]) {
+      clearTimeout(this.gearQuantityTimers[id])
+      delete this.gearQuantityTimers[id]
+    }
+    delete this.gearPendingQuantities[id]
+    delete this.gearSubmittingQuantities[id]
+    delete this.gearSyncFailedIds[id]
+  },
+
   buildMemberGearEditors(event: TeamCalendarEvent, participantIds?: string[], requirements: EventGearRequirement[] = []): MemberGearEditor[] {
     const members = (this.data as { teamMembers: TeamMember[] }).teamMembers
     const visibleMembers = participantIds ? members.filter((member) => participantIds.includes(member.id)) : members
@@ -1841,6 +1985,20 @@ Page({
     }))
   },
 
+  eventGearRequirementKey(participantUserId: string, userGearId: string): string {
+    return `${participantUserId}::${userGearId}`
+  },
+
+  snapshotEventGearRequirements(editors: MemberGearEditor[]): Record<string, number> {
+    const snapshot: Record<string, number> = {}
+    editors.forEach((editor) => {
+      editor.allocations.forEach((gear) => {
+        snapshot[this.eventGearRequirementKey(editor.member.id, gear.userGearId || gear.id)] = gear.count
+      })
+    })
+    return snapshot
+  },
+
   closeOtherEventPreview() {
     this.setData({ otherEventPreview: null })
   },
@@ -1850,6 +2008,7 @@ Page({
     await this.submitEventGearIfDirty()
     this.setData({ teamEventClosing: true })
     setTimeout(() => {
+      this.eventGearSnapshot = {}
       this.setData({
         teamDetailEvent: null,
         memberGearEditors: [],
@@ -1931,16 +2090,31 @@ Page({
     const teamId = data.teamDetailEvent.teamId || data.selectedTeamId
     if (!teamId) return
     const requirements = data.memberGearEditors.flatMap((editor) => (
-      editor.allocations.map((gear) => ({
-        participantUserId: editor.member.id,
-        gearTypeId: gear.gearTypeId || gear.id,
-        userGearId: gear.userGearId || gear.id,
-        quantity: gear.count,
-      }))
+      editor.allocations
+        .filter((gear) => {
+          const key = this.eventGearRequirementKey(editor.member.id, gear.userGearId || gear.id)
+          return (this.eventGearSnapshot[key] || 0) !== gear.count
+        })
+        .map((gear) => ({
+          participantUserId: editor.member.id,
+          gearTypeId: gear.gearTypeId || gear.id,
+          userGearId: gear.userGearId || gear.id,
+          quantity: gear.count,
+        }))
     ))
-    try {
-      await this.api(`/teams/${teamId}/events/${data.teamDetailEvent.id}/gear-requirements`, 'PATCH', { requirements })
+    if (!requirements.length) {
       this.setData({ eventGearDirty: false })
+      return
+    }
+    try {
+      const res = await this.api<{ gearSummary?: any[] }>(`/teams/${teamId}/events/${data.teamDetailEvent.id}/gear-requirements`, 'PATCH', { requirements })
+      const gearSummary = (res.gearSummary || []).map((item) => this.mapApiGear({ ...item, id: item.gearTypeId, count: item.quantity }))
+      const updatedEvent = { ...data.teamDetailEvent, gearSummary }
+      const teamEvents = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).map((item) => (
+        item.id === updatedEvent.id ? updatedEvent : item
+      ))
+      this.eventGearSnapshot = this.snapshotEventGearRequirements(data.memberGearEditors)
+      this.setData({ eventGearDirty: false, teamDetailEvent: updatedEvent, teamEvents })
     } catch (error) {
       this.toast('装备分配保存失败')
     }
@@ -2114,7 +2288,7 @@ Page({
     if (!this.gearDragId) return
     const touch = event.touches[0]
     if (!touch) return
-    this.setData({ gearDragGhostStyle: this.gearDragGhostStyle(touch.clientY) })
+    this.queueGearDragVisual(touch.clientY)
     const targetIndex = this.gearDragTargetIndex(touch.clientY)
     if (targetIndex < 0) return
     const gearItems = [...(this.data as { gearItems: GearItem[] }).gearItems]
@@ -2125,6 +2299,16 @@ Page({
     this.setData({ gearItems })
   },
 
+  queueGearDragVisual(y: number) {
+    this.pendingGearDragGhostStyle = this.gearDragGhostStyle(y)
+    if (this.gearDragVisualPending) return
+    this.gearDragVisualPending = true
+    setTimeout(() => {
+      this.gearDragVisualPending = false
+      this.setData({ gearDragGhostStyle: this.pendingGearDragGhostStyle })
+    }, 16)
+  },
+
   async onGearTouchEnd() {
     if (!this.gearDragId) return
     const gearItems = (this.data as { gearItems: GearItem[] }).gearItems
@@ -2133,6 +2317,8 @@ Page({
     this.gearDragTouchOffsetY = 42
     this.gearDragGhostLeft = 44
     this.gearDragGhostWidth = 0
+    this.gearDragVisualPending = false
+    this.pendingGearDragGhostStyle = ''
     this.setData({
       gearDragActive: false,
       gearDragId: '',
@@ -2141,8 +2327,7 @@ Page({
       basecampScrollEnabled: true,
     })
     try {
-      const res = await this.api<{ gears: any[] }>('/me/gears/order', 'PATCH', { gearIds: gearItems.map((item) => item.id) })
-      this.setData({ gearItems: res.gears.map((item) => this.mapApiGear(item)) })
+      await this.api('/me/gears/order', 'PATCH', { gearIds: gearItems.map((item) => item.id) })
     } catch (error) {
       this.toast('装备排序保存失败')
       await this.loadGearItems()
@@ -2179,12 +2364,12 @@ Page({
     const current = ((this.data as { gearItems: GearItem[] }).gearItems).find((item) => item.id === id)
     if (!current) return
     const nextCount = Math.max(0, current.count - 1)
-    await this.api(`/me/gears/${id}`, 'PATCH', { quantity: nextCount })
     const gearItems = ((this.data as { gearItems: GearItem[] }).gearItems).map((item) => {
       if (item.id !== id) return item
       return { ...item, count: nextCount }
     })
     this.setData({ gearItems })
+    this.scheduleGearQuantitySave(id, nextCount)
   },
 
   async increaseGear(event: TouchEventLike) {
@@ -2194,21 +2379,29 @@ Page({
     const current = ((this.data as { gearItems: GearItem[] }).gearItems).find((item) => item.id === id)
     if (!current) return
     const nextCount = current.count + 1
-    await this.api(`/me/gears/${id}`, 'PATCH', { quantity: nextCount })
     const gearItems = ((this.data as { gearItems: GearItem[] }).gearItems).map((item) => {
       if (item.id !== id) return item
       return { ...item, count: nextCount }
     })
     this.setData({ gearItems })
+    this.scheduleGearQuantitySave(id, nextCount)
   },
 
   async deleteGear(event: TouchEventLike) {
     if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     wx.vibrateShort({ type: 'light' })
-    await this.api(`/me/gears/${id}`, 'DELETE')
-    const gearItems = ((this.data as { gearItems: GearItem[] }).gearItems).filter((item) => item.id !== id)
+    this.cancelPendingGearQuantity(id)
+    const currentItems = (this.data as { gearItems: GearItem[] }).gearItems
+    const removed = currentItems.find((item) => item.id === id)
+    const gearItems = currentItems.filter((item) => item.id !== id)
     this.setData({ gearItems })
+    try {
+      await this.api(`/me/gears/${id}`, 'DELETE')
+    } catch (error) {
+      if (removed) this.setData({ gearItems: currentItems })
+      this.toast('装备删除失败')
+    }
   },
 
   async saveCreatedEvent() {

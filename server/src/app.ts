@@ -27,8 +27,20 @@ app.use(cors());
 app.use(express.json());
 app.use((req: AuthedRequest, res, next) => {
   const traceId = `trc_${nanoid(12)}`;
+  const startedAt = Date.now();
   req.traceId = traceId;
   res.setHeader('X-Trace-Id', traceId);
+  res.on('finish', () => {
+    console.info(JSON.stringify({
+      level: 'info',
+      traceId,
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Date.now() - startedAt,
+      userId: req.user?.id
+    }));
+  });
   next();
 });
 
@@ -360,33 +372,27 @@ app.patch('/me/gears/order', asyncRoute(async (req: AuthedRequest, res) => {
   if (uniqueIds.length !== body.gearIds.length) throw apiError(400, 'duplicate gear ids');
 
   const uid = userId(req);
-  const gears = await tx(async (client) => {
+  await tx(async (client) => {
     const owned = await client.query('SELECT id FROM user_gears WHERE user_id = $1', [uid]);
     const ownedIds = new Set(owned.rows.map((item) => item.id as string));
     if (ownedIds.size !== uniqueIds.length || uniqueIds.some((gearId) => !ownedIds.has(gearId))) {
       throw apiError(400, 'gear order must include all owned gears');
     }
 
-    for (const [index, gearId] of uniqueIds.entries()) {
-      await client.query(
-        'UPDATE user_gears SET display_order = $1, updated_at = now() WHERE id = $2 AND user_id = $3',
-        [(index + 1) * 1000, gearId, uid]
-      );
-    }
-
-    const result = await client.query(
-      `SELECT ug.id, ug.gear_type_id AS "gearTypeId", gt.icon_key AS "iconKey", ug.name, ug.quantity,
-              ug.display_order AS "displayOrder"
-       FROM user_gears ug
-       JOIN gear_types gt ON gt.id = ug.gear_type_id
-       WHERE ug.user_id = $1
-       ORDER BY ug.display_order ASC, ug.created_at DESC`,
-      [uid]
+    const values = uniqueIds.map((gearId, index) => `($${index * 2 + 1}, $${index * 2 + 2}::integer)`).join(', ');
+    const params = uniqueIds.flatMap((gearId, index) => [gearId, (index + 1) * 1000]);
+    await client.query(
+      `UPDATE user_gears
+       SET display_order = ordered.display_order,
+           updated_at = now()
+       FROM (VALUES ${values}) AS ordered(id, display_order)
+       WHERE user_gears.id = ordered.id
+         AND user_gears.user_id = $${params.length + 1}`,
+      [...params, uid]
     );
-    return result.rows;
   });
 
-  res.json({ gears });
+  res.json({ ok: true });
 }));
 
 app.patch('/me/gears/:gearId', asyncRoute(async (req: AuthedRequest, res) => {
@@ -909,43 +915,76 @@ app.patch('/teams/:teamId/events/:eventId/gear-requirements', asyncRoute(async (
     const event = await assertTeamEvent(client, teamId, eventId);
     if (event.creator_user_id !== uid) throw apiError(403, 'only event creator can assign gear');
 
-    for (const item of body.requirements) {
-      const participant = await client.query(
-        `SELECT 1 FROM event_participants
-         WHERE event_id = $1 AND user_id = $2 AND status = 'joined'`,
-        [eventId, item.participantUserId]
+    if (body.requirements.length) {
+      const participantIds = Array.from(new Set(body.requirements.map((item) => item.participantUserId)));
+      const participants = await client.query(
+        `SELECT user_id
+         FROM event_participants
+         WHERE event_id = $1 AND status = 'joined' AND user_id = ANY($2::text[])`,
+        [eventId, participantIds]
       );
-      if (!participant.rowCount) throw apiError(400, 'participant must be joined');
-
-      const owned = await client.query(
-        `SELECT id, quantity
-         FROM user_gears
-         WHERE id = $1 AND user_id = $2 AND gear_type_id = $3`,
-        [item.userGearId, item.participantUserId, item.gearTypeId]
-      );
-      if (!owned.rowCount) throw apiError(400, 'owned gear not found');
-      if (item.quantity > owned.rows[0].quantity) throw apiError(400, 'quantity exceeds owned gear');
-
-      if (item.quantity === 0) {
-        await client.query(
-          `DELETE FROM event_gear_requirements
-           WHERE event_id = $1 AND participant_user_id = $2 AND user_gear_id = $3`,
-          [eventId, item.participantUserId, item.userGearId]
-        );
-        continue;
+      const joined = new Set(participants.rows.map((item) => item.user_id as string));
+      if (participantIds.some((participantId) => !joined.has(participantId))) {
+        throw apiError(400, 'participant must be joined');
       }
 
-      await client.query(
-        `INSERT INTO event_gear_requirements
-           (id, event_id, participant_user_id, gear_type_id, user_gear_id, quantity, assigned_by_user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (event_id, participant_user_id, user_gear_id) DO UPDATE
-           SET quantity = EXCLUDED.quantity,
-               gear_type_id = EXCLUDED.gear_type_id,
-               assigned_by_user_id = EXCLUDED.assigned_by_user_id,
-               updated_at = now()`,
-        [id('egr'), eventId, item.participantUserId, item.gearTypeId, item.userGearId, item.quantity, uid]
+      const gearIds = Array.from(new Set(body.requirements.map((item) => item.userGearId)));
+      const owned = await client.query(
+        `SELECT id, user_id, gear_type_id, quantity
+         FROM user_gears
+         WHERE id = ANY($1::text[])`,
+        [gearIds]
       );
+      const ownedById = new Map(owned.rows.map((item) => [item.id as string, item]));
+      for (const item of body.requirements) {
+        const gear = ownedById.get(item.userGearId);
+        if (!gear || gear.user_id !== item.participantUserId || gear.gear_type_id !== item.gearTypeId) {
+          throw apiError(400, 'owned gear not found');
+        }
+        if (item.quantity > gear.quantity) throw apiError(400, 'quantity exceeds owned gear');
+      }
+
+      const deletes = body.requirements.filter((item) => item.quantity === 0);
+      if (deletes.length) {
+        const deleteValues = deletes.map((_, index) => `($${index * 2 + 2}, $${index * 2 + 3})`).join(', ');
+        const deleteParams = deletes.flatMap((item) => [item.participantUserId, item.userGearId]);
+        await client.query(
+          `DELETE FROM event_gear_requirements egr
+           USING (VALUES ${deleteValues}) AS deleted(participant_user_id, user_gear_id)
+           WHERE egr.event_id = $1
+             AND egr.participant_user_id = deleted.participant_user_id
+             AND egr.user_gear_id = deleted.user_gear_id`,
+          [eventId, ...deleteParams]
+        );
+      }
+
+      const upserts = body.requirements.filter((item) => item.quantity > 0);
+      if (upserts.length) {
+        const upsertValues = upserts.map((_, index) => {
+          const base = index * 7 + 1;
+          return `($${base}, $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+        }).join(', ');
+        const upsertParams = upserts.flatMap((item) => [
+          id('egr'),
+          eventId,
+          item.participantUserId,
+          item.gearTypeId,
+          item.userGearId,
+          item.quantity,
+          uid
+        ]);
+        await client.query(
+          `INSERT INTO event_gear_requirements
+             (id, event_id, participant_user_id, gear_type_id, user_gear_id, quantity, assigned_by_user_id)
+           VALUES ${upsertValues}
+           ON CONFLICT (event_id, participant_user_id, user_gear_id) DO UPDATE
+             SET quantity = EXCLUDED.quantity,
+                 gear_type_id = EXCLUDED.gear_type_id,
+                 assigned_by_user_id = EXCLUDED.assigned_by_user_id,
+                 updated_at = now()`,
+          upsertParams
+        );
+      }
     }
 
     const result = await client.query(

@@ -95,6 +95,18 @@ CREATE INDEX IF NOT EXISTS idx_events_dates ON events(start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_events_team ON events(team_id);
 CREATE INDEX IF NOT EXISTS idx_participants_user ON event_participants(user_id, status);
 CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id, left_at);
+CREATE INDEX IF NOT EXISTS idx_user_gears_user_order
+  ON user_gears(user_id, display_order, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_team_members_team_active
+  ON team_members(team_id, left_at, joined_at);
+CREATE INDEX IF NOT EXISTS idx_events_creator_personal_dates
+  ON events(creator_user_id, scope, deleted_at, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_events_team_scope_dates
+  ON events(team_id, scope, deleted_at, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_participants_event_status
+  ON event_participants(event_id, status, user_id);
+CREATE INDEX IF NOT EXISTS idx_gear_requirements_event
+  ON event_gear_requirements(event_id, participant_user_id, gear_type_id);
 
 INSERT INTO gear_types (id, name, icon_key, is_system)
 VALUES
