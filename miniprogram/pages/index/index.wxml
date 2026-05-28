@@ -125,7 +125,10 @@
             <view class="member-gear-track">
               <view class="member-gear-column" wx:for="{{filteredTeamMembers}}" wx:key="id">
                 <view class="member-column-head">
-                  <view class="member-avatar member-avatar--{{item.color}}">{{item.avatar}}</view>
+                  <view class="member-avatar member-avatar--{{item.color}}">
+                    <image wx:if="{{item.avatarUrl}}" class="member-avatar-image" src="{{item.avatarUrl}}" mode="aspectFill" />
+                    <text wx:else>{{item.avatar}}</text>
+                  </view>
                   <text class="member-name">{{item.name}}</text>
                 </view>
                 <scroll-view class="member-column-list" scroll-y="true" enhanced="true">
@@ -409,7 +412,10 @@
       <view class="participant-editor" wx:if="{{teamDetailEvent.status === 'joined'}}">
         <view class="participant-block" wx:for="{{memberGearEditors}}" wx:for-item="editor" wx:key="member.id">
           <view class="participant-head" data-id="{{editor.member.id}}" bindtap="toggleMemberGear">
-            <view class="member-avatar member-avatar--{{editor.member.color}}">{{editor.member.avatar}}</view>
+            <view class="member-avatar member-avatar--{{editor.member.color}}">
+              <image wx:if="{{editor.member.avatarUrl}}" class="member-avatar-image" src="{{editor.member.avatarUrl}}" mode="aspectFill" />
+              <text wx:else>{{editor.member.avatar}}</text>
+            </view>
             <text class="participant-name">{{editor.member.name}}</text>
             <text class="participant-toggle">{{editor.expanded ? '收起' : '展开'}}</text>
           </view>

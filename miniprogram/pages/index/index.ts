@@ -108,6 +108,7 @@ type TeamMember = {
   id: string
   name: string
   avatar: string
+  avatarUrl: string
   color: 'blue' | 'pink' | 'green' | 'violet'
   gear: GearItem[]
 }
@@ -753,6 +754,7 @@ Page({
       id: item.id,
       name: item.id === (this.data as { currentUserId: string }).currentUserId ? '我' : item.name,
       avatar: item.avatar || item.name.slice(0, 1).toUpperCase(),
+      avatarUrl: item.avatarUrl || '',
       color: COLORS[index % COLORS.length],
       gear: (item.gear || []).map((gear: any) => this.mapApiGear(gear)),
     }))
@@ -1263,6 +1265,7 @@ Page({
       id: item.id,
       name: item.id === (this.data as { currentUserId: string }).currentUserId ? '我' : item.name,
       avatar: item.avatar || item.name.slice(0, 1).toUpperCase(),
+      avatarUrl: item.avatarUrl || '',
       color: COLORS[index % COLORS.length],
       gear: (item.gear || []).map((gear: any) => this.mapApiGear(gear)),
     }))
