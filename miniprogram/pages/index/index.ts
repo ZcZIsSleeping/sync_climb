@@ -54,6 +54,12 @@ type ClimbEvent = {
   teamId?: string
   creatorUserId?: string
   status?: string
+  isMine?: boolean
+  isTeamEvent?: boolean
+  belongsToCurrentTeam?: boolean
+  canEdit?: boolean
+  canJoin?: boolean
+  displayLabel?: string
 }
 
 type InviteEvent = {
@@ -402,7 +408,7 @@ function buildWeekSegments(
       title: current.event.title,
       creator: current.event.creator,
       color: `event-segment--${current.event.color}${current.event.eventType === 'pending_team' || current.event.status === 'pending' || current.event.status === 'rejected' ? ' event-segment--pending' : ''}`,
-      label: `${current.event.title}(${current.event.creator})`,
+      label: current.event.displayLabel || `${current.event.title}(${current.event.creator})`,
       style: `left:${left}%;width:${width}%;top:${62 + current.row * 30}rpx;border-radius:${radius};`,
     })
   }
@@ -687,10 +693,14 @@ Page({
   },
 
   mapApiEvent(item: any, index = 0): ClimbEvent {
+    const currentUserId = (this.data as { currentUserId: string }).currentUserId
+    const isMine = item.isMine !== undefined ? Boolean(item.isMine) : (item.type === 'personal' || item.creatorUserId === currentUserId)
+    const isTeamEvent = item.isTeamEvent !== undefined ? Boolean(item.isTeamEvent) : Boolean(item.teamId)
+    const creator = item.creatorName || item.memberName || (isMine ? '我' : 'Team')
     return {
       id: item.id,
       title: item.title,
-      creator: item.creatorName || item.memberName || (item.type === 'personal' ? '我' : 'Team'),
+      creator,
       start: item.startDate,
       end: item.endDate,
       createdAt: Date.now() - index,
@@ -699,17 +709,32 @@ Page({
       teamId: item.teamId,
       creatorUserId: item.creatorUserId,
       status: item.status,
+      isMine,
+      isTeamEvent,
+      belongsToCurrentTeam: Boolean(item.belongsToCurrentTeam),
+      canEdit: item.canEdit !== undefined ? Boolean(item.canEdit) : isMine,
+      canJoin: Boolean(item.canJoin),
+      displayLabel: item.type === 'personal' ? item.title : `${item.title}(${creator})`,
     }
   },
 
   mapApiTeamEvent(item: any, index = 0): TeamCalendarEvent {
-    const isTeamEvent = item.type === 'team'
+    const currentUserId = (this.data as { currentUserId: string }).currentUserId
+    const isMine = item.isMine !== undefined ? Boolean(item.isMine) : item.creatorUserId === currentUserId
+    const isTeamEvent = item.isTeamEvent !== undefined ? Boolean(item.isTeamEvent) : item.type === 'team'
+    const creatorName = isMine ? '我' : (item.creatorName || item.memberName || (isTeamEvent ? 'Team' : '成员'))
+    const displayLabel = isMine ? `${item.title}(我)` : creatorName
     return {
       ...this.mapApiEvent(item, index),
-      creator: item.creatorName || item.memberName || (isTeamEvent ? 'Team' : '成员'),
+      creator: creatorName,
       memberId: item.memberId || item.creatorUserId || 'team',
       creatorUserId: item.creatorUserId,
       isTeamEvent,
+      isMine,
+      belongsToCurrentTeam: Boolean(item.belongsToCurrentTeam),
+      canEdit: item.canEdit !== undefined ? Boolean(item.canEdit) : isMine,
+      canJoin: Boolean(item.canJoin),
+      displayLabel,
       gearSummary: [],
     }
   },
@@ -1307,7 +1332,7 @@ Page({
       teamId,
       status: detail.event.status || found.status,
       creatorUserId: detail.event.creatorUserId || found.creatorUserId,
-      creator: detail.event.creatorName || found.creator,
+      creator: detail.event.creatorUserId === (this.data as { currentUserId: string }).currentUserId ? '我' : (detail.event.creatorName || found.creator),
       gearSummary: (detail.gearSummary || []).map((item) => this.mapApiGear({ ...item, id: item.gearTypeId, count: item.quantity })),
     }
     const memberGearEditors = this.buildMemberGearEditors(
@@ -1377,7 +1402,27 @@ Page({
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
     if (!found) return
+    if (!found.belongsToCurrentTeam) {
+      if (found.canEdit) {
+        this.setData({
+          editingEvent: { ...found, range: rangeText(found.start, found.end) },
+          editTitle: found.title,
+          otherEventPreview: null,
+        })
+        return
+      }
+      this.setData({ otherEventPreview: found })
+      return
+    }
     if (!found.isTeamEvent) {
+      if (found.canEdit) {
+        this.setData({
+          editingEvent: { ...found, range: rangeText(found.start, found.end) },
+          editTitle: found.title,
+          otherEventPreview: null,
+        })
+        return
+      }
       this.setData({ otherEventPreview: found })
       return
     }
@@ -1392,12 +1437,9 @@ Page({
     if (!this.ensureLogin()) return
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
-    if (!found || !found.isTeamEvent) return
+    if (!found) return
     if (found.status === 'pending' || found.status === 'rejected') return
-    const currentUserId = (this.data as { currentUserId: string }).currentUserId
-    if (found.creatorUserId && found.creatorUserId !== currentUserId) {
-      return
-    }
+    if (!found.canEdit) return
     wx.vibrateShort({ type: 'light' })
     this.eventDragActive = true
     this.eventDragScope = 'team'
@@ -1413,7 +1455,7 @@ Page({
       otherEventPreview: null,
       teamDayPreviewDate: '',
       dragGhostVisible: true,
-      dragGhostLabel: `${found.title}(${found.creator})`,
+      dragGhostLabel: found.displayLabel || `${found.title}(${found.creator})`,
       dragGhostColor: `event-segment--${found.color}`,
       dragGhostStyle: this.dragGhostStyleFromEvent(event),
       dropPreviewVisible: true,
@@ -1434,6 +1476,7 @@ Page({
     const target = this.eventDragLastDate
     const id = this.eventDragId
     const selectedTeamId = (this.data as { selectedTeamId: string }).selectedTeamId
+    const dragged = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
     this.resetEventDrag()
     this.setData({
       scrollEnabled: true,
@@ -1442,9 +1485,17 @@ Page({
       dragGhostVisible: false,
       dropPreviewVisible: false,
     })
-    if (selectedTeamId) {
+    if (dragged?.isTeamEvent && dragged.belongsToCurrentTeam && selectedTeamId) {
       try {
         await this.api(`/teams/${selectedTeamId}/events/${id}/move`, 'PATCH', { startDate: target })
+      } catch (error) {
+      }
+      await this.refreshAfterTeamStateChanged(selectedTeamId)
+      return
+    }
+    if (dragged && selectedTeamId) {
+      try {
+        await this.api(`/me/events/${id}/move`, 'PATCH', { startDate: target })
       } catch (error) {
       }
       await this.refreshAfterTeamStateChanged(selectedTeamId)
@@ -1473,7 +1524,27 @@ Page({
     const found = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).find((item) => item.id === id)
     if (!found) return
     this.setData({ teamDayPreviewDate: '', teamDayPreviewEvents: [] })
+    if (!found.belongsToCurrentTeam) {
+      if (found.canEdit) {
+        this.setData({
+          editingEvent: { ...found, range: rangeText(found.start, found.end) },
+          editTitle: found.title,
+          otherEventPreview: null,
+        })
+        return
+      }
+      this.setData({ otherEventPreview: found })
+      return
+    }
     if (!found.isTeamEvent) {
+      if (found.canEdit) {
+        this.setData({
+          editingEvent: { ...found, range: rangeText(found.start, found.end) },
+          editTitle: found.title,
+          otherEventPreview: null,
+        })
+        return
+      }
       this.setData({ otherEventPreview: found })
       return
     }
@@ -1486,7 +1557,7 @@ Page({
 
   getVisibleTeamEventsForDate(date: string): TeamCalendarEvent[] {
     const data = this.data as { teamEvents: TeamCalendarEvent[]; teamOnlyFilter: boolean }
-    const events = data.teamOnlyFilter ? data.teamEvents.filter((item) => item.isTeamEvent) : data.teamEvents
+    const events = data.teamOnlyFilter ? data.teamEvents.filter((item) => item.belongsToCurrentTeam) : data.teamEvents
     return sortedEventsForDate(events, date) as TeamCalendarEvent[]
   },
 
@@ -1518,17 +1589,19 @@ Page({
       this.openInviteConfirm(found, 'calendar')
       return
     }
+    if (found.canEdit) {
+      this.setData({
+        expandedDate: '',
+        expandedEvents: [],
+        editingEvent: { ...found, range: rangeText(found.start, found.end) },
+        editTitle: found.title,
+      })
+      return
+    }
     if (found.eventType === 'team') {
       await this.openJoinedTeamEventFromCalendar(found)
       return
     }
-    if (found.eventType && found.eventType !== 'personal') return
-    this.setData({
-      expandedDate: '',
-      expandedEvents: [],
-      editingEvent: { ...found, range: rangeText(found.start, found.end) },
-      editTitle: found.title,
-    })
   },
 
   onCalendarMoreTap(event: TouchEventLike) {
@@ -1550,7 +1623,7 @@ Page({
     const id = String(event.currentTarget.dataset.id || '')
     const found = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
     if (!found) return
-    if (found.eventType && found.eventType !== 'personal') return
+    if (!found.canEdit) return
     wx.vibrateShort({ type: 'light' })
     this.eventDragActive = true
     this.eventDragScope = 'calendar'
@@ -1565,7 +1638,7 @@ Page({
       expandedDate: '',
       editingEvent: null,
       dragGhostVisible: true,
-      dragGhostLabel: `${found.title}(${found.creator})`,
+      dragGhostLabel: found.displayLabel || found.title,
       dragGhostColor: `event-segment--${found.color}`,
       dragGhostStyle: this.dragGhostStyleFromEvent(event),
       dropPreviewVisible: true,
@@ -1587,7 +1660,7 @@ Page({
     const id = this.eventDragId
     const duration = this.eventDragDuration
     const dragged = ((this.data as { events: ClimbEvent[] }).events).find((item) => item.id === id)
-    if (dragged?.eventType && dragged.eventType !== 'personal') {
+    if (dragged && !dragged.canEdit) {
       this.resetEventDrag()
       this.setData({
         scrollEnabled: true,
@@ -1596,7 +1669,6 @@ Page({
         dragGhostVisible: false,
         dropPreviewVisible: false,
       })
-      this.toast('团队日程请在团队页移动')
       return
     }
     this.resetEventDrag()
@@ -2482,15 +2554,17 @@ Page({
       this.openInviteConfirm(found, 'calendar')
       return
     }
+    if (found.canEdit) {
+      this.setData({
+        editingEvent: found,
+        editTitle: found.title,
+      })
+      return
+    }
     if (found.eventType === 'team') {
       await this.openJoinedTeamEventFromCalendar(found)
       return
     }
-    if (found.eventType && found.eventType !== 'personal') return
-    this.setData({
-      editingEvent: found,
-      editTitle: found.title,
-    })
   },
 
   onEditInput(event: InputEventLike) {
@@ -2506,17 +2580,26 @@ Page({
       expandedDate: string
     }
     if (!data.editingEvent) return
-    if (data.editingEvent.eventType && data.editingEvent.eventType !== 'personal') return
+    if (!data.editingEvent.canEdit) return
     const title = data.editTitle.trim()
     if (!title) return
     await this.api(`/me/events/${data.editingEvent.id}`, 'PATCH', { title })
     const events = data.events.map((item) => (item.id === data.editingEvent!.id ? { ...item, title } : item))
+    const teamEvents = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).map((item) => (
+      item.id === data.editingEvent!.id
+        ? { ...item, title, displayLabel: item.isMine ? `${title}(我)` : item.displayLabel }
+        : item
+    ))
     this.setData({
       events,
+      teamEvents,
       editingEvent: null,
       editTitle: '',
       expandedEvents: sortedEventsForDate(events, data.expandedDate).map((item) => ({ ...item, range: rangeText(item.start, item.end) })),
-    }, () => this.refreshMonths())
+    }, () => {
+      this.refreshMonths()
+      this.refreshTeamMonths()
+    })
   },
 
   async deleteEditingEvent() {
@@ -2527,17 +2610,22 @@ Page({
       expandedDate: string
     }
     if (!data.editingEvent) return
-    if (data.editingEvent.eventType && data.editingEvent.eventType !== 'personal') return
+    if (!data.editingEvent.canEdit) return
     await this.api(`/me/events/${data.editingEvent.id}`, 'DELETE')
     const events = data.events.filter((item) => item.id !== data.editingEvent!.id)
+    const teamEvents = ((this.data as { teamEvents: TeamCalendarEvent[] }).teamEvents).filter((item) => item.id !== data.editingEvent!.id)
     const expandedEvents = sortedEventsForDate(events, data.expandedDate).map((item) => ({ ...item, range: rangeText(item.start, item.end) }))
     this.setData({
       events,
+      teamEvents,
       editingEvent: null,
       editTitle: '',
       expandedEvents,
       expandedDate: expandedEvents.length ? data.expandedDate : '',
-    }, () => this.refreshMonths())
+    }, () => {
+      this.refreshMonths()
+      this.refreshTeamMonths()
+    })
   },
 
   closeExpanded() {

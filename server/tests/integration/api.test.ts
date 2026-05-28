@@ -9,8 +9,13 @@ import { pool } from '../../src/db.js';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 
 async function resetDb() {
-  const migration = await fs.readFile(path.join(root, 'migrations/001_init.sql'), 'utf8');
-  await pool.query(migration);
+  const migrationFiles = (await fs.readdir(path.join(root, 'migrations')))
+    .filter((file) => file.endsWith('.sql'))
+    .sort();
+  for (const file of migrationFiles) {
+    const migration = await fs.readFile(path.join(root, 'migrations', file), 'utf8');
+    await pool.query(migration);
+  }
   await pool.query(`
     TRUNCATE event_gear_requirements,
              event_participants,
@@ -378,6 +383,14 @@ describe('teams and team events', () => {
       })
       .expect(201);
     const eventId = event.body.event.id;
+
+    const renamedByCreator = await request(app)
+      .patch(`/me/events/${eventId}`)
+      .set('authorization', auth(alice.token))
+      .send({ title: '团队攀登更新' })
+      .expect(200);
+    expect(renamedByCreator.body.event.type).toBe('team');
+    expect(renamedByCreator.body.event.title).toBe('团队攀登更新');
 
     const pendingCalendar = await request(app)
       .get('/me/calendar/events?start=2025-06-01&end=2025-06-30')

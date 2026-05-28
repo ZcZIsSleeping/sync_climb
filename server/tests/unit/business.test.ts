@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   calculateMovedRange,
-  calendarEventType,
   canJoinTeamEvent,
   shouldShowParticipantInEventDetail
 } from '../../src/business.js';
@@ -19,12 +18,6 @@ describe('business rules', () => {
       startDate: '2025-07-10',
       endDate: '2025-07-13'
     });
-  });
-
-  it('maps calendar event types from scope and participant status', () => {
-    expect(calendarEventType('personal')).toBe('personal');
-    expect(calendarEventType('team', 'pending')).toBe('pending_team');
-    expect(calendarEventType('team', 'joined')).toBe('team');
   });
 
   it('only shows joined participants in team event detail', () => {

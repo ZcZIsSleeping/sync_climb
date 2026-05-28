@@ -337,7 +337,7 @@
       >
         <view class="preview-accent {{item.color === 'pink' ? 'preview-accent--pink' : ''}}"></view>
         <view class="preview-main">
-          <text class="preview-title">{{item.title}}({{item.creator}})</text>
+          <text class="preview-title">{{item.displayLabel || item.title}}</text>
           <text class="preview-id">#{{item.id}}</text>
         </view>
         <text class="preview-time">{{item.range}}</text>
@@ -347,7 +347,7 @@
 
   <view class="other-event-toast" wx:if="{{otherEventPreview}}" bindtap="closeOtherEventPreview">
     <view class="other-event-card">
-      <text>{{otherEventPreview.title}}({{otherEventPreview.creator}})</text>
+      <text>{{otherEventPreview.title}}</text>
     </view>
   </view>
 
@@ -369,7 +369,7 @@
       >
         <view class="preview-accent {{item.color === 'pink' ? 'preview-accent--pink' : ''}}"></view>
         <view class="preview-main">
-          <text class="preview-title">{{item.title}}({{item.creator}})</text>
+          <text class="preview-title">{{item.displayLabel || item.title}}</text>
           <text class="preview-id">#{{item.id}}</text>
         </view>
         <text class="preview-time">{{item.start}} - {{item.end}}</text>

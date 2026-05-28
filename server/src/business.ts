@@ -1,6 +1,4 @@
 export type ParticipantStatus = 'pending' | 'joined' | 'rejected' | 'left';
-export type EventScope = 'personal' | 'team';
-export type CalendarEventType = 'personal' | 'pending_team' | 'team';
 
 const dayMs = 24 * 60 * 60 * 1000;
 
@@ -25,11 +23,6 @@ export function calculateMovedRange(startDate: string, endDate: string, nextStar
     startDate: formatDateOnly(nextStart),
     endDate: formatDateOnly(nextEnd)
   };
-}
-
-export function calendarEventType(scope: EventScope, status?: ParticipantStatus): CalendarEventType {
-  if (scope === 'personal') return 'personal';
-  return status === 'pending' ? 'pending_team' : 'team';
 }
 
 export function shouldShowParticipantInEventDetail(status: ParticipantStatus) {

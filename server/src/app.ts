@@ -165,7 +165,7 @@ async function assertTeamMember(client: DbClient, teamId: string, uid: string) {
 async function assertTeamEvent(client: DbClient, teamId: string, eventId: string) {
   const result = await client.query(
     `SELECT * FROM events
-     WHERE id = $1 AND team_id = $2 AND scope = 'team' AND deleted_at IS NULL`,
+     WHERE id = $1 AND team_id = $2 AND deleted_at IS NULL`,
     [eventId, teamId]
   );
   if (!result.rowCount) throw apiError(404, 'team event not found');
@@ -186,7 +186,6 @@ function mapEventRow(row: Record<string, unknown>) {
   return {
     id: row.id,
     title: row.title,
-    scope: row.scope,
     type: row.type,
     teamId: row.team_id,
     teamName: row.team_name,
@@ -195,6 +194,11 @@ function mapEventRow(row: Record<string, unknown>) {
     memberId: row.member_id,
     memberName: row.member_name,
     status: row.status,
+    isMine: row.is_mine,
+    isTeamEvent: row.is_team_event,
+    belongsToCurrentTeam: row.belongs_to_current_team,
+    canEdit: row.can_edit,
+    canJoin: row.can_join,
     startDate: dateValue(row.start_date),
     endDate: dateValue(row.end_date)
   };
@@ -431,15 +435,20 @@ app.get('/me/calendar/events', asyncRoute(async (req: AuthedRequest, res) => {
   const result = await pool.query(
     `SELECT e.*,
             CASE
-              WHEN e.scope = 'personal' THEN 'personal'
+              WHEN e.team_id IS NULL THEN 'personal'
               WHEN ep.status = 'pending' THEN 'pending_team'
               ELSE 'team'
             END AS type,
             ep.status,
             t.name AS team_name,
-            u.nickname AS creator_name
+            u.nickname AS creator_name,
+            (e.creator_user_id = $1) AS is_mine,
+            (e.team_id IS NOT NULL) AS is_team_event,
+            false AS belongs_to_current_team,
+            (e.creator_user_id = $1) AS can_edit,
+            false AS can_join
      FROM events e
-     JOIN event_participants ep ON ep.event_id = e.id AND ep.user_id = $1
+     LEFT JOIN event_participants ep ON ep.event_id = e.id AND ep.user_id = $1
      LEFT JOIN teams t ON t.id = e.team_id
      JOIN users u ON u.id = e.creator_user_id
      WHERE e.deleted_at IS NULL
@@ -458,8 +467,8 @@ app.post('/me/events', asyncRoute(async (req: AuthedRequest, res) => {
 
   const event = await tx(async (client) => {
     const eventResult = await client.query(
-      `INSERT INTO events (id, title, creator_user_id, scope, start_date, end_date)
-       VALUES ($1, $2, $3, 'personal', $4, $5)
+      `INSERT INTO events (id, title, creator_user_id, start_date, end_date)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
       [id('evt'), body.title, uid, body.startDate, body.endDate]
     );
@@ -478,12 +487,12 @@ app.patch('/me/events/:eventId', asyncRoute(async (req: AuthedRequest, res) => {
   const result = await pool.query(
     `UPDATE events
      SET title = $1, updated_at = now()
-     WHERE id = $2 AND creator_user_id = $3 AND scope = 'personal' AND deleted_at IS NULL
+     WHERE id = $2 AND creator_user_id = $3 AND deleted_at IS NULL
      RETURNING *`,
     [body.title, req.params.eventId, userId(req)]
   );
-  if (!result.rowCount) throw apiError(404, 'personal event not found');
-  res.json({ event: mapEventRow({ ...result.rows[0], type: 'personal' }) });
+  if (!result.rowCount) throw apiError(404, 'editable event not found');
+  res.json({ event: mapEventRow({ ...result.rows[0], type: result.rows[0].team_id ? 'team' : 'personal' }) });
 }));
 
 app.patch('/me/events/:eventId/move', asyncRoute(async (req: AuthedRequest, res) => {
@@ -493,21 +502,21 @@ app.patch('/me/events/:eventId/move', asyncRoute(async (req: AuthedRequest, res)
      SET start_date = $1::date,
          end_date = ($1::date + (end_date - start_date)),
          updated_at = now()
-     WHERE id = $2 AND creator_user_id = $3 AND scope = 'personal' AND deleted_at IS NULL
+     WHERE id = $2 AND creator_user_id = $3 AND deleted_at IS NULL
      RETURNING *`,
     [body.startDate, req.params.eventId, userId(req)]
   );
-  if (!result.rowCount) throw apiError(404, 'personal event not found');
-  res.json({ event: mapEventRow({ ...result.rows[0], type: 'personal' }) });
+  if (!result.rowCount) throw apiError(404, 'movable event not found');
+  res.json({ event: mapEventRow({ ...result.rows[0], type: result.rows[0].team_id ? 'team' : 'personal' }) });
 }));
 
 app.delete('/me/events/:eventId', asyncRoute(async (req: AuthedRequest, res) => {
   const result = await pool.query(
     `UPDATE events SET deleted_at = now(), updated_at = now()
-     WHERE id = $1 AND creator_user_id = $2 AND scope = 'personal' AND deleted_at IS NULL`,
+     WHERE id = $1 AND creator_user_id = $2 AND deleted_at IS NULL`,
     [req.params.eventId, userId(req)]
   );
-  if (!result.rowCount) throw apiError(404, 'personal event not found');
+  if (!result.rowCount) throw apiError(404, 'deletable event not found');
   res.status(204).end();
 }));
 
@@ -517,7 +526,7 @@ app.post('/me/events/:eventId/accept', asyncRoute(async (req: AuthedRequest, res
      SET status = 'joined', updated_at = now()
      FROM events e
      WHERE ep.event_id = e.id AND ep.event_id = $1 AND ep.user_id = $2
-       AND e.scope = 'team' AND e.deleted_at IS NULL
+       AND e.team_id IS NOT NULL AND e.deleted_at IS NULL
        AND ep.status IN ('pending', 'rejected', 'left')
      RETURNING ep.*`,
     [req.params.eventId, userId(req)]
@@ -532,7 +541,7 @@ app.post('/me/events/:eventId/reject', asyncRoute(async (req: AuthedRequest, res
      SET status = 'rejected', updated_at = now()
      FROM events e
      WHERE ep.event_id = e.id AND ep.event_id = $1 AND ep.user_id = $2
-       AND e.scope = 'team' AND e.deleted_at IS NULL
+       AND e.team_id IS NOT NULL AND e.deleted_at IS NULL
        AND ep.status = 'pending'
      RETURNING ep.*`,
     [req.params.eventId, userId(req)]
@@ -681,34 +690,46 @@ app.get('/teams/:teamId/calendar/events', asyncRoute(async (req: AuthedRequest, 
   const teamId = pathParam(req.params.teamId, 'teamId');
   await assertTeamMember(pool, teamId, uid);
 
-  const teamEvents = await pool.query(
-    `SELECT e.*, 'team' AS type, ep.status, u.nickname AS creator_name
+  const events = await pool.query(
+    `WITH active_members AS (
+       SELECT user_id
+       FROM team_members
+       WHERE team_id = $1 AND left_at IS NULL
+     )
+     SELECT DISTINCT e.*,
+            CASE WHEN e.team_id = $1 THEN 'team' ELSE 'member_personal' END AS type,
+            my_ep.status,
+            creator.nickname AS creator_name,
+            CASE WHEN e.team_id IS NULL THEN e.creator_user_id ELSE NULL END AS member_id,
+            CASE WHEN e.team_id IS NULL THEN creator.nickname ELSE NULL END AS member_name,
+            (e.creator_user_id = $4) AS is_mine,
+            (e.team_id IS NOT NULL) AS is_team_event,
+            (e.team_id = $1) AS belongs_to_current_team,
+            (e.creator_user_id = $4) AS can_edit,
+            (e.team_id = $1 AND e.creator_user_id <> $4 AND COALESCE(my_ep.status, '') <> 'joined') AS can_join
      FROM events e
-     JOIN users u ON u.id = e.creator_user_id
-     LEFT JOIN event_participants ep ON ep.event_id = e.id AND ep.user_id = $4
-     WHERE e.team_id = $1 AND e.scope = 'team' AND e.deleted_at IS NULL
+     JOIN users creator ON creator.id = e.creator_user_id
+     LEFT JOIN event_participants my_ep ON my_ep.event_id = e.id AND my_ep.user_id = $4
+     WHERE e.deleted_at IS NULL
        AND e.start_date <= $3 AND e.end_date >= $2
+       AND (
+         e.team_id = $1
+         OR (
+           $5 = false
+           AND EXISTS (
+             SELECT 1
+             FROM event_participants ep
+             WHERE ep.event_id = e.id
+               AND ep.user_id IN (SELECT user_id FROM active_members)
+               AND ep.status IN ('joined', 'pending')
+           )
+         )
+       )
      ORDER BY e.start_date ASC`,
-    [teamId, query.start, query.end, uid]
+    [teamId, query.start, query.end, uid, query.onlyTeamEvents === 'true']
   );
 
-  if (query.onlyTeamEvents === 'true') {
-    res.json({ events: teamEvents.rows.map(mapEventRow) });
-    return;
-  }
-
-  const personalEvents = await pool.query(
-    `SELECT e.*, 'member_personal' AS type, tm.user_id AS member_id, u.nickname AS member_name
-     FROM team_members tm
-     JOIN users u ON u.id = tm.user_id
-     JOIN events e ON e.creator_user_id = tm.user_id AND e.scope = 'personal'
-     WHERE tm.team_id = $1 AND tm.left_at IS NULL AND e.deleted_at IS NULL
-       AND e.start_date <= $3 AND e.end_date >= $2
-     ORDER BY e.start_date ASC`,
-    [teamId, query.start, query.end]
-  );
-
-  res.json({ events: [...personalEvents.rows, ...teamEvents.rows].map(mapEventRow) });
+  res.json({ events: events.rows.map(mapEventRow) });
 }));
 
 app.post('/teams/:teamId/events', asyncRoute(async (req: AuthedRequest, res) => {
@@ -720,8 +741,8 @@ app.post('/teams/:teamId/events', asyncRoute(async (req: AuthedRequest, res) => 
   const event = await tx(async (client) => {
     await assertTeamMember(client, teamId, uid);
     const eventResult = await client.query(
-      `INSERT INTO events (id, title, creator_user_id, scope, team_id, start_date, end_date)
-       VALUES ($1, $2, $3, 'team', $4, $5, $6)
+      `INSERT INTO events (id, title, creator_user_id, team_id, start_date, end_date)
+       VALUES ($1, $2, $3, $4, $5, $6)
        RETURNING *`,
       [id('evt'), body.title, uid, teamId, body.startDate, body.endDate]
     );
@@ -857,7 +878,7 @@ app.patch('/teams/:teamId/events/:eventId', asyncRoute(async (req: AuthedRequest
   const result = await pool.query(
     `UPDATE events
      SET title = $1, updated_at = now()
-     WHERE id = $2 AND team_id = $3 AND creator_user_id = $4 AND scope = 'team' AND deleted_at IS NULL
+     WHERE id = $2 AND team_id = $3 AND creator_user_id = $4 AND deleted_at IS NULL
      RETURNING *`,
     [body.title, eventId, teamId, uid]
   );
@@ -876,7 +897,7 @@ app.patch('/teams/:teamId/events/:eventId/move', asyncRoute(async (req: AuthedRe
      SET start_date = $1::date,
          end_date = ($1::date + (end_date - start_date)),
          updated_at = now()
-     WHERE id = $2 AND team_id = $3 AND creator_user_id = $4 AND scope = 'team' AND deleted_at IS NULL
+     WHERE id = $2 AND team_id = $3 AND creator_user_id = $4 AND deleted_at IS NULL
      RETURNING *`,
     [body.startDate, eventId, teamId, uid]
   );
@@ -891,7 +912,7 @@ app.delete('/teams/:teamId/events/:eventId', asyncRoute(async (req: AuthedReques
   await assertTeamMember(pool, teamId, uid);
   const result = await pool.query(
     `UPDATE events SET deleted_at = now(), updated_at = now()
-     WHERE id = $1 AND team_id = $2 AND creator_user_id = $3 AND scope = 'team' AND deleted_at IS NULL`,
+     WHERE id = $1 AND team_id = $2 AND creator_user_id = $3 AND deleted_at IS NULL`,
     [eventId, teamId, uid]
   );
   if (!result.rowCount) throw apiError(404, 'deletable team event not found');

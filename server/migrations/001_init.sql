@@ -55,15 +55,13 @@ CREATE TABLE IF NOT EXISTS events (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   creator_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-  scope TEXT NOT NULL CHECK (scope IN ('personal', 'team')),
   team_id TEXT REFERENCES teams(id) ON DELETE CASCADE,
   start_date DATE NOT NULL,
   end_date DATE NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at TIMESTAMPTZ,
-  CHECK (end_date >= start_date),
-  CHECK ((scope = 'personal' AND team_id IS NULL) OR (scope = 'team' AND team_id IS NOT NULL))
+  CHECK (end_date >= start_date)
 );
 
 CREATE TABLE IF NOT EXISTS event_participants (
@@ -99,10 +97,10 @@ CREATE INDEX IF NOT EXISTS idx_user_gears_user_order
   ON user_gears(user_id, display_order, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_team_members_team_active
   ON team_members(team_id, left_at, joined_at);
-CREATE INDEX IF NOT EXISTS idx_events_creator_personal_dates
-  ON events(creator_user_id, scope, deleted_at, start_date, end_date);
-CREATE INDEX IF NOT EXISTS idx_events_team_scope_dates
-  ON events(team_id, scope, deleted_at, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_events_creator_dates
+  ON events(creator_user_id, deleted_at, start_date, end_date);
+CREATE INDEX IF NOT EXISTS idx_events_team_dates
+  ON events(team_id, deleted_at, start_date, end_date);
 CREATE INDEX IF NOT EXISTS idx_participants_event_status
   ON event_participants(event_id, status, user_id);
 CREATE INDEX IF NOT EXISTS idx_gear_requirements_event
