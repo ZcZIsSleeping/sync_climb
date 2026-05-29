@@ -191,6 +191,50 @@ describe('health and auth', () => {
 
     expect(profile.body.user.nickname).toBe('只改昵称');
     expect(profile.body.user.avatarUrl).toBe('https://example.com/first.png');
+    expect(profile.body.user.sportGrade).toBe('');
+    expect(profile.body.user.tradGrade).toBe('');
+  });
+
+  it('stores climbing grades and belay skills on the user profile', async () => {
+    const alice = await login('profile-capability-user', 'Alice');
+    const profile = await request(app)
+      .patch('/me/profile')
+      .set('authorization', auth(alice.token))
+      .send({
+        sportGrade: '5.12b',
+        tradGrade: '5.10d',
+        belaySkills: {
+          topRope: true,
+          lead: true,
+          multiPitch: false
+        }
+      })
+      .expect(200);
+
+    expect(profile.body.user).toMatchObject({
+      nickname: 'Alice',
+      sportGrade: '5.12b',
+      tradGrade: '5.10d',
+      belaySkills: {
+        topRope: true,
+        lead: true,
+        multiPitch: false
+      }
+    });
+
+    const repeated = await login('profile-capability-user', 'Alice Again');
+    expect(repeated.userId).toBe(alice.userId);
+    const relogin = await request(app)
+      .post('/auth/wechat-login')
+      .send({ code: 'profile-capability-user', nickname: 'Alice Again', avatarUrl: '' })
+      .expect(200);
+    expect(relogin.body.user.sportGrade).toBe('5.12b');
+    expect(relogin.body.user.tradGrade).toBe('5.10d');
+    expect(relogin.body.user.belaySkills).toEqual({
+      topRope: true,
+      lead: true,
+      multiPitch: false
+    });
   });
 
   it('uploads and stores user avatars', async () => {
@@ -220,6 +264,12 @@ describe('input validation limits', () => {
       .patch('/me/profile')
       .set('authorization', auth(alice.token))
       .send({ nickname: '山'.repeat(21) })
+      .expect(400);
+
+    await request(app)
+      .patch('/me/profile')
+      .set('authorization', auth(alice.token))
+      .send({ sportGrade: '5.16a' })
       .expect(400);
 
     await request(app)

@@ -811,6 +811,8 @@ page {
 }
 
 .profile-panel--logged-in {
+  align-items: stretch;
+  flex-direction: column;
   animation: basecamp-profile-settle 260ms ease-out both;
 }
 
@@ -859,9 +861,25 @@ page {
 
 .profile-row {
   width: 100%;
-  display: flex;
+  display: grid;
+  grid-template-columns: 86rpx minmax(0, 1fr) 88rpx;
   align-items: center;
-  gap: 20rpx;
+  gap: 16rpx;
+  box-sizing: border-box;
+}
+
+.profile-row .avatar-button {
+  grid-column: 1;
+}
+
+.profile-row .nickname-display,
+.profile-row .nickname-input {
+  grid-column: 2;
+}
+
+.profile-row .logout-button {
+  grid-column: 3;
+  justify-self: end;
 }
 
 .avatar-button {
@@ -925,25 +943,28 @@ page {
 .nickname-display {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
   line-height: 72rpx;
-  text-align: left;
+  text-align: center;
 }
 
 .nickname-input {
   display: block;
   line-height: 72rpx;
-  text-align: left;
+  text-align: center;
 }
 
 .logout-button {
-  width: 112rpx;
+  width: 88rpx;
+  min-width: 88rpx;
+  max-width: 88rpx;
   height: 58rpx;
   margin: 0;
   padding: 0;
+  box-sizing: border-box;
   border-radius: 999rpx;
   background: rgba(245, 228, 232, 0.92);
   color: #9b5264;
@@ -954,6 +975,156 @@ page {
 
 .logout-button::after {
   border: 0;
+}
+
+.profile-capability-panel {
+  display: grid;
+  grid-template-columns: 1fr 1rpx 1fr;
+  gap: 24rpx;
+  margin-top: 24rpx;
+  padding-top: 22rpx;
+  border-top: 1rpx solid rgba(143, 156, 174, 0.18);
+}
+
+.capability-section {
+  min-width: 0;
+}
+
+.capability-title {
+  margin-bottom: 18rpx;
+  color: #172335;
+  font-size: 24rpx;
+  font-weight: 800;
+}
+
+.capability-divider {
+  width: 1rpx;
+  background: rgba(143, 156, 174, 0.2);
+}
+
+.grade-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18rpx;
+}
+
+.grade-item {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  align-items: center;
+}
+
+.grade-name {
+  max-width: 100%;
+  overflow: hidden;
+  color: #536174;
+  font-size: 20rpx;
+  font-weight: 700;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+}
+
+.r-grade {
+  display: inline-flex;
+}
+
+.yds-grade {
+  min-width: 72rpx;
+  height: 32rpx;
+  box-sizing: border-box;
+  padding: 0 8rpx;
+  border-width: 1rpx;
+  border-style: solid;
+  border-radius: 7rpx;
+  font-size: 18rpx;
+  font-weight: 800;
+  line-height: 32rpx;
+  text-align: center;
+  white-space: nowrap;
+  box-shadow: inset 0 2rpx 0 rgba(255, 255, 255, 0.2), 0 2rpx 5rpx rgba(39, 58, 82, 0.05);
+}
+
+.gb0 {
+  border-color: rgba(127, 143, 164, 0.26);
+  background: rgba(238, 243, 248, 0.94);
+  color: #6b7788;
+}
+
+.gb1 {
+  border-color: #3d9209;
+  background: #53b41b;
+  color: #000000;
+  text-shadow: 0 1rpx 1rpx rgba(255, 255, 255, 0.75);
+}
+
+.gb2 {
+  border-color: #cfae00;
+  background: #ffe200;
+  color: #000000;
+  text-shadow: 0 1rpx 1rpx rgba(255, 255, 255, 0.75);
+}
+
+.gb3 {
+  border-color: #e6842a;
+  background: #ff9900;
+  color: #000000;
+  text-shadow: 0 1rpx 1rpx rgba(255, 255, 255, 0.75);
+}
+
+.gb4 {
+  border-color: #ca0909;
+  background: #db2424;
+  color: #ffffff;
+  text-shadow: 0 -1rpx 1rpx rgba(0, 0, 0, 0.45);
+}
+
+.gb5 {
+  border-color: #9b1178;
+  background: #aa1c7b;
+  color: #ffffff;
+  text-shadow: 0 -1rpx 1rpx rgba(0, 0, 0, 0.45);
+}
+
+.belay-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12rpx;
+}
+
+.belay-chip {
+  min-width: 0;
+  height: 56rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18rpx;
+  background: rgba(238, 243, 248, 0.92);
+  color: #6b7788;
+  font-size: 20rpx;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: inset 0 0 0 1rpx rgba(127, 143, 164, 0.12);
+}
+
+.belay-chip--toprope {
+  background: rgba(213, 233, 253, 0.95);
+  color: #2363a5;
+  box-shadow: inset 0 0 0 1rpx rgba(63, 131, 212, 0.2);
+}
+
+.belay-chip--lead {
+  background: rgba(253, 232, 207, 0.96);
+  color: #a45c1d;
+  box-shadow: inset 0 0 0 1rpx rgba(214, 126, 45, 0.22);
+}
+
+.belay-chip--multipitch {
+  background: rgba(250, 222, 226, 0.96);
+  color: #a54050;
+  box-shadow: inset 0 0 0 1rpx rgba(210, 79, 96, 0.22);
 }
 
 .gear-section {

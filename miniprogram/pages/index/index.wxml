@@ -262,6 +262,38 @@
             <input wx:else class="nickname-input" type="text" value="{{nickname}}" placeholder="昵称" focus="true" confirm-type="done" bindinput="onNicknameInput" bindconfirm="saveNickname" bindblur="saveNickname" />
             <button class="logout-button" bindtap="logout">退出</button>
           </view>
+          <view wx:if="{{loggedIn}}" class="profile-capability-panel">
+            <view class="capability-section">
+              <view class="capability-title">攀爬能力</view>
+              <view class="grade-row">
+                <view class="grade-item">
+                  <text class="grade-name">运动攀岩</text>
+                  <picker mode="selector" range="{{ydsGrades}}" value="{{sportGradeIndex}}" data-key="sport" bindchange="onGradeChange">
+                    <view class="r-grade">
+                      <text class="yds-grade {{sportGradeClass}}">{{sportGradeLabel}}</text>
+                    </view>
+                  </picker>
+                </view>
+                <view class="grade-item">
+                  <text class="grade-name">传统攀岩</text>
+                  <picker mode="selector" range="{{ydsGrades}}" value="{{tradGradeIndex}}" data-key="trad" bindchange="onGradeChange">
+                    <view class="r-grade">
+                      <text class="yds-grade {{tradGradeClass}}">{{tradGradeLabel}}</text>
+                    </view>
+                  </picker>
+                </view>
+              </view>
+            </view>
+            <view class="capability-divider"></view>
+            <view class="capability-section">
+              <view class="capability-title">保护技能</view>
+              <view class="belay-row">
+                <view class="belay-chip {{belaySkills.topRope ? 'belay-chip--toprope' : ''}}" data-skill="topRope" bindlongpress="toggleBelaySkill">顶绳</view>
+                <view class="belay-chip {{belaySkills.lead ? 'belay-chip--lead' : ''}}" data-skill="lead" bindlongpress="toggleBelaySkill">先锋</view>
+                <view class="belay-chip {{belaySkills.multiPitch ? 'belay-chip--multipitch' : ''}}" data-skill="multiPitch" bindlongpress="toggleBelaySkill">多段</view>
+              </view>
+            </view>
+          </view>
         </view>
 
         <view wx:if="{{loggedIn}}" class="gear-section">

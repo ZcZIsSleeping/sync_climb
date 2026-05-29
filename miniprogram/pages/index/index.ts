@@ -16,6 +16,7 @@ type ScrollEventLike = {
 }
 
 type PickerEventLike = {
+  currentTarget: { dataset: Record<string, string | boolean | number | undefined> }
   detail: { value: string | number }
 }
 
@@ -102,6 +103,21 @@ type GearIconOption = {
   label: string
   icon: string
   iconUrl: string
+}
+
+type BelaySkills = {
+  topRope: boolean
+  lead: boolean
+  multiPitch: boolean
+}
+
+type ProfileUser = {
+  id: string
+  nickname: string
+  avatarUrl: string
+  sportGrade?: string
+  tradGrade?: string
+  belaySkills?: Partial<BelaySkills>
 }
 
 type GearItem = {
@@ -200,6 +216,57 @@ const GEAR_TYPE_META: Record<string, GearIconOption> = GEAR_ICON_OPTIONS.reduce(
   acc[GEAR_TYPE_BY_LABEL[item.label]] = item
   return acc
 }, {} as Record<string, GearIconOption>)
+const YDS_GRADE_OPTIONS = [
+  '无等级',
+  '5.4', '5.5', '5.6', '5.7', '5.8', '5.9',
+  '5.10a', '5.10b', '5.10c', '5.10d',
+  '5.11a', '5.11b', '5.11c', '5.11d',
+  '5.12a', '5.12b', '5.12c', '5.12d',
+  '5.13a', '5.13b', '5.13c', '5.13d',
+  '5.14a', '5.14b', '5.14c', '5.14d',
+  '5.15a', '5.15b', '5.15c', '5.15d',
+]
+const YDS_GRADES = [
+  '5.4', '5.5', '5.6', '5.7', '5.8', '5.9',
+  '5.10a', '5.10b', '5.10c', '5.10d',
+  '5.11a', '5.11b', '5.11c', '5.11d',
+  '5.12a', '5.12b', '5.12c', '5.12d',
+  '5.13a', '5.13b', '5.13c', '5.13d',
+  '5.14a', '5.14b', '5.14c', '5.14d',
+  '5.15a', '5.15b', '5.15c', '5.15d',
+]
+const YDS_GRADE_CLASS: Record<string, string> = {
+  '5.4': 'gb1',
+  '5.5': 'gb1',
+  '5.6': 'gb2',
+  '5.7': 'gb2',
+  '5.8': 'gb2',
+  '5.9': 'gb2',
+  '5.10a': 'gb2',
+  '5.10b': 'gb3',
+  '5.10c': 'gb3',
+  '5.10d': 'gb3',
+  '5.11a': 'gb3',
+  '5.11b': 'gb3',
+  '5.11c': 'gb3',
+  '5.11d': 'gb3',
+  '5.12a': 'gb3',
+  '5.12b': 'gb4',
+  '5.12c': 'gb4',
+  '5.12d': 'gb4',
+  '5.13a': 'gb4',
+  '5.13b': 'gb4',
+  '5.13c': 'gb4',
+  '5.13d': 'gb4',
+  '5.14a': 'gb4',
+  '5.14b': 'gb5',
+  '5.14c': 'gb5',
+  '5.14d': 'gb5',
+  '5.15a': 'gb5',
+  '5.15b': 'gb5',
+  '5.15c': 'gb5',
+  '5.15d': 'gb5',
+}
 const GEAR_ICON_BY_KEY: Record<string, string> = {
   Q: '/assets/icons/gear/quickdraw.png',
   L: '/assets/icons/gear/lock.png',
@@ -242,6 +309,21 @@ function addMonths(date: Date, months: number): Date {
 
 function avatarTextFromNickname(nickname: string): string {
   return (nickname.trim() || 'S').slice(0, 1).toUpperCase()
+}
+
+function ydsGradeIndex(grade: string | undefined, fallback: string): number {
+  if (!grade) return 0
+  const index = YDS_GRADE_OPTIONS.indexOf(grade)
+  return index >= 0 ? index : YDS_GRADE_OPTIONS.indexOf(fallback)
+}
+
+function ydsGradeClass(grade: string | undefined, fallback: string): string {
+  if (!grade) return 'gb0'
+  return YDS_GRADE_CLASS[grade || fallback] || YDS_GRADE_CLASS[fallback] || 'gb1'
+}
+
+function ydsGradeLabel(grade: string | undefined): string {
+  return grade || '无等级'
 }
 
 function apiCalendarRange() {
@@ -503,6 +585,20 @@ Page({
     nicknameEditing: false,
     avatarUrl: '',
     avatarText: avatarTextFromNickname('山野同伴'),
+    ydsGrades: YDS_GRADE_OPTIONS,
+    sportGradeIndex: 0,
+    sportGrade: '',
+    sportGradeLabel: '无等级',
+    sportGradeClass: 'gb0',
+    tradGradeIndex: 0,
+    tradGrade: '',
+    tradGradeLabel: '无等级',
+    tradGradeClass: 'gb0',
+    belaySkills: {
+      topRope: false,
+      lead: false,
+      multiPitch: false,
+    },
     gearIconOptions: GEAR_ICON_OPTIONS,
     gearIconLabels: GEAR_ICON_OPTIONS.map((item) => item.label),
     selectedGearIconIndex: 0,
@@ -1822,11 +1918,13 @@ Page({
 
   async login() {
     try {
-      const res = await this.api<{ token: string; user: { id: string; nickname: string; avatarUrl: string } }>('/auth/wechat-login', 'POST', {
+      const res = await this.api<{ token: string; user: ProfileUser }>('/auth/wechat-login', 'POST', {
         code: await this.wxLogin(),
         nickname: '攀登者',
         avatarUrl: '',
       })
+      const sportGrade = res.user.sportGrade || ''
+      const tradGrade = res.user.tradGrade || ''
       this.setData({
         loggedIn: true,
         authToken: res.token,
@@ -1834,6 +1932,19 @@ Page({
         nickname: res.user.nickname,
         avatarUrl: res.user.avatarUrl || '',
         avatarText: avatarTextFromNickname(res.user.nickname),
+        sportGradeIndex: ydsGradeIndex(sportGrade, '5.10a'),
+        sportGrade,
+        sportGradeLabel: ydsGradeLabel(sportGrade),
+        sportGradeClass: ydsGradeClass(sportGrade, '5.10a'),
+        tradGradeIndex: ydsGradeIndex(tradGrade, '5.9'),
+        tradGrade,
+        tradGradeLabel: ydsGradeLabel(tradGrade),
+        tradGradeClass: ydsGradeClass(tradGrade, '5.9'),
+        belaySkills: {
+          topRope: Boolean(res.user.belaySkills?.topRope),
+          lead: Boolean(res.user.belaySkills?.lead),
+          multiPitch: Boolean(res.user.belaySkills?.multiPitch),
+        },
       })
       this.originalNickname = res.user.nickname
       this.originalAvatarUrl = res.user.avatarUrl || ''
@@ -1852,10 +1963,12 @@ Page({
         this.toast('请输入账号和密码')
         return
       }
-      const res = await this.api<{ token: string; user: { id: string; nickname: string; avatarUrl: string } }>('/auth/local-login', 'POST', {
+      const res = await this.api<{ token: string; user: ProfileUser }>('/auth/local-login', 'POST', {
         account,
         password: data.loginPassword,
       })
+      const sportGrade = res.user.sportGrade || ''
+      const tradGrade = res.user.tradGrade || ''
       this.setData({
         loggedIn: true,
         authToken: res.token,
@@ -1863,6 +1976,19 @@ Page({
         nickname: res.user.nickname,
         avatarUrl: res.user.avatarUrl || '',
         avatarText: avatarTextFromNickname(res.user.nickname),
+        sportGradeIndex: ydsGradeIndex(sportGrade, '5.10a'),
+        sportGrade,
+        sportGradeLabel: ydsGradeLabel(sportGrade),
+        sportGradeClass: ydsGradeClass(sportGrade, '5.10a'),
+        tradGradeIndex: ydsGradeIndex(tradGrade, '5.9'),
+        tradGrade,
+        tradGradeLabel: ydsGradeLabel(tradGrade),
+        tradGradeClass: ydsGradeClass(tradGrade, '5.9'),
+        belaySkills: {
+          topRope: Boolean(res.user.belaySkills?.topRope),
+          lead: Boolean(res.user.belaySkills?.lead),
+          multiPitch: Boolean(res.user.belaySkills?.multiPitch),
+        },
       })
       this.originalNickname = res.user.nickname
       this.originalAvatarUrl = res.user.avatarUrl || ''
@@ -1888,6 +2014,19 @@ Page({
       nicknameEditing: false,
       avatarUrl: '',
       avatarText: avatarTextFromNickname('山野同伴'),
+      sportGradeIndex: 0,
+      sportGrade: '',
+      sportGradeLabel: '无等级',
+      sportGradeClass: 'gb0',
+      tradGradeIndex: 0,
+      tradGrade: '',
+      tradGradeLabel: '无等级',
+      tradGradeClass: 'gb0',
+      belaySkills: {
+        topRope: false,
+        lead: false,
+        multiPitch: false,
+      },
       events: [],
       monthStartOffset: INITIAL_MONTH_OFFSET,
       monthCount: INITIAL_MONTH_COUNT,
@@ -1923,6 +2062,50 @@ Page({
   startNicknameEdit() {
     if (!this.ensureLogin()) return
     this.setData({ nicknameEditing: true })
+  },
+
+  onGradeChange(event: PickerEventLike) {
+    if (!this.ensureLogin()) return
+    const key = String(event.currentTarget.dataset.key || '')
+    const index = Number(event.detail.value)
+    const selected = YDS_GRADE_OPTIONS[index] || '无等级'
+    const grade = selected === '无等级' ? '' : selected
+    const gradeClass = ydsGradeClass(grade, '5.10a')
+    const gradeLabel = ydsGradeLabel(grade)
+    wx.vibrateShort({ type: 'light' })
+    if (key === 'trad') {
+      this.setData({
+        tradGradeIndex: index,
+        tradGrade: grade,
+        tradGradeLabel: gradeLabel,
+        tradGradeClass: gradeClass,
+      })
+      void this.saveCapabilityProfile({ tradGrade: grade })
+      return
+    }
+    this.setData({
+      sportGradeIndex: index,
+      sportGrade: grade,
+      sportGradeLabel: gradeLabel,
+      sportGradeClass: gradeClass,
+    })
+    void this.saveCapabilityProfile({ sportGrade: grade })
+  },
+
+  toggleBelaySkill(event: TouchEventLike) {
+    if (!this.ensureLogin()) return
+    const skill = String(event.currentTarget.dataset.skill || '')
+    const data = this.data as { belaySkills: { topRope: boolean; lead: boolean; multiPitch: boolean } }
+    if (!['topRope', 'lead', 'multiPitch'].includes(skill)) return
+    wx.vibrateShort({ type: 'light' })
+    const nextSkills = {
+      ...data.belaySkills,
+      [skill]: !data.belaySkills[skill as 'topRope' | 'lead' | 'multiPitch'],
+    }
+    this.setData({
+      belaySkills: nextSkills,
+    })
+    void this.saveCapabilityProfile({ belaySkills: nextSkills })
   },
 
   onAvatarError(event?: unknown) {
@@ -1968,7 +2151,7 @@ Page({
       if (endNicknameEdit) this.setData({ nicknameEditing: false })
       return
     }
-    const res = await this.api<{ user: { nickname: string; avatarUrl: string } }>('/me/profile', 'PATCH', {
+    const res = await this.api<{ user: ProfileUser }>('/me/profile', 'PATCH', {
       nickname,
       avatarUrl: data.avatarUrl || '',
     })
@@ -1981,6 +2164,32 @@ Page({
       ...(endNicknameEdit ? { nicknameEditing: false } : {}),
     })
     if (successTitle) this.toast(successTitle)
+  },
+
+  async saveCapabilityProfile(payload: { sportGrade?: string; tradGrade?: string; belaySkills?: BelaySkills }) {
+    if (!this.ensureLogin()) return
+    try {
+      const res = await this.api<{ user: ProfileUser }>('/me/profile', 'PATCH', payload)
+      const sportGrade = res.user.sportGrade ?? (this.data as { sportGrade: string }).sportGrade
+      const tradGrade = res.user.tradGrade ?? (this.data as { tradGrade: string }).tradGrade
+      this.setData({
+        sportGradeIndex: ydsGradeIndex(sportGrade, '5.10a'),
+        sportGrade,
+        sportGradeLabel: ydsGradeLabel(sportGrade),
+        sportGradeClass: ydsGradeClass(sportGrade, '5.10a'),
+        tradGradeIndex: ydsGradeIndex(tradGrade, '5.9'),
+        tradGrade,
+        tradGradeLabel: ydsGradeLabel(tradGrade),
+        tradGradeClass: ydsGradeClass(tradGrade, '5.9'),
+        belaySkills: {
+          topRope: Boolean(res.user.belaySkills?.topRope),
+          lead: Boolean(res.user.belaySkills?.lead),
+          multiPitch: Boolean(res.user.belaySkills?.multiPitch),
+        },
+      })
+    } catch (error) {
+      this.toast('能力保存失败')
+    }
   },
 
   onGearIconChange(event: PickerEventLike) {

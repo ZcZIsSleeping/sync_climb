@@ -56,6 +56,15 @@ const eventTitle = text(50);
 const teamName = text(30);
 const gearName = text(30);
 const iconKey = text(8);
+const ydsGrade = z.enum([
+  '5.4', '5.5', '5.6', '5.7', '5.8', '5.9',
+  '5.10a', '5.10b', '5.10c', '5.10d',
+  '5.11a', '5.11b', '5.11c', '5.11d',
+  '5.12a', '5.12b', '5.12c', '5.12d',
+  '5.13a', '5.13b', '5.13c', '5.13d',
+  '5.14a', '5.14b', '5.14c', '5.14d',
+  '5.15a', '5.15b', '5.15c', '5.15d'
+]);
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const roomCodeInput = z.string().trim().length(6).transform((value) => value.toUpperCase());
 const localLoginAccount = z.string().trim().toLowerCase().min(1).max(32);
@@ -72,6 +81,21 @@ const dateBody = z.object({
   startDate: dateString,
   endDate: dateString
 });
+
+function mapUserRow(row: any) {
+  return {
+    id: row.id,
+    nickname: row.nickname,
+    avatarUrl: row.avatar_url ?? row.avatarUrl ?? '',
+    sportGrade: row.sport_grade ?? row.sportGrade ?? '',
+    tradGrade: row.trad_grade ?? row.tradGrade ?? '',
+    belaySkills: {
+      topRope: Boolean(row.belay_top_rope ?? row.belayTopRope),
+      lead: Boolean(row.belay_lead ?? row.belayLead),
+      multiPitch: Boolean(row.belay_multi_pitch ?? row.belayMultiPitch)
+    }
+  };
+}
 
 function asyncRoute(handler: express.RequestHandler): express.RequestHandler {
   return (req, res, next) => Promise.resolve(handler(req, res, next)).catch(next);
@@ -266,17 +290,13 @@ app.post('/auth/wechat-login', asyncRoute(async (req, res) => {
        SET session_token = EXCLUDED.session_token,
            avatar_url = COALESCE(NULLIF(users.avatar_url, ''), EXCLUDED.avatar_url),
            updated_at = now()
-     RETURNING id, nickname, avatar_url`,
+     RETURNING id, nickname, avatar_url, sport_grade, trad_grade, belay_top_rope, belay_lead, belay_multi_pitch`,
     [id('usr'), openid, token, body.nickname, body.avatarUrl]
   );
 
   res.json({
     token,
-    user: {
-      id: result.rows[0].id,
-      nickname: result.rows[0].nickname,
-      avatarUrl: result.rows[0].avatar_url
-    }
+    user: mapUserRow(result.rows[0])
   });
 }));
 
@@ -304,17 +324,13 @@ app.post('/auth/local-login', asyncRoute(async (req, res) => {
        SET session_token = EXCLUDED.session_token,
            avatar_url = COALESCE(NULLIF(users.avatar_url, ''), EXCLUDED.avatar_url),
            updated_at = now()
-     RETURNING id, nickname, avatar_url`,
+     RETURNING id, nickname, avatar_url, sport_grade, trad_grade, belay_top_rope, belay_lead, belay_multi_pitch`,
     [id('usr'), openid, token, account.nickname, account.avatarUrl]
   );
 
   res.json({
     token,
-    user: {
-      id: result.rows[0].id,
-      nickname: result.rows[0].nickname,
-      avatarUrl: result.rows[0].avatar_url
-    }
+    user: mapUserRow(result.rows[0])
   });
 }));
 
@@ -344,19 +360,40 @@ app.post('/gear-types', asyncRoute(async (req: AuthedRequest, res) => {
 app.use('/me', requireAuth);
 app.patch('/me/profile', asyncRoute(async (req: AuthedRequest, res) => {
   const body = z.object({
-    nickname,
-    avatarUrl: avatarUrl.optional()
+    nickname: nickname.optional(),
+    avatarUrl: avatarUrl.optional(),
+    sportGrade: z.union([ydsGrade, z.literal('')]).optional(),
+    tradGrade: z.union([ydsGrade, z.literal('')]).optional(),
+    belaySkills: z.object({
+      topRope: z.boolean().optional(),
+      lead: z.boolean().optional(),
+      multiPitch: z.boolean().optional()
+    }).optional()
   }).parse(req.body);
   const result = await pool.query(
     `UPDATE users
-     SET nickname = $1,
+     SET nickname = COALESCE($1, nickname),
          avatar_url = COALESCE(NULLIF($2, ''), avatar_url),
+         sport_grade = COALESCE($3, sport_grade),
+         trad_grade = COALESCE($4, trad_grade),
+         belay_top_rope = COALESCE($5, belay_top_rope),
+         belay_lead = COALESCE($6, belay_lead),
+         belay_multi_pitch = COALESCE($7, belay_multi_pitch),
          updated_at = now()
-     WHERE id = $3
-     RETURNING id, nickname, avatar_url AS "avatarUrl"`,
-    [body.nickname, body.avatarUrl ?? null, userId(req)]
+     WHERE id = $8
+     RETURNING id, nickname, avatar_url, sport_grade, trad_grade, belay_top_rope, belay_lead, belay_multi_pitch`,
+    [
+      body.nickname ?? null,
+      body.avatarUrl ?? null,
+      body.sportGrade ?? null,
+      body.tradGrade ?? null,
+      body.belaySkills?.topRope ?? null,
+      body.belaySkills?.lead ?? null,
+      body.belaySkills?.multiPitch ?? null,
+      userId(req)
+    ]
   );
-  res.json({ user: result.rows[0] });
+  res.json({ user: mapUserRow(result.rows[0]) });
 }));
 
 app.post('/me/avatar', avatarUpload.single('avatar'), asyncRoute(async (req: AuthedRequest, res) => {
@@ -368,13 +405,13 @@ app.post('/me/avatar', avatarUpload.single('avatar'), asyncRoute(async (req: Aut
   const result = await pool.query(
     `UPDATE users SET avatar_url = $1, updated_at = now()
      WHERE id = $2
-     RETURNING id, nickname, avatar_url AS "avatarUrl"`,
+     RETURNING id, nickname, avatar_url, sport_grade, trad_grade, belay_top_rope, belay_lead, belay_multi_pitch`,
     [storedAvatarUrl, userId(req)]
   );
 
   res.status(201).json({
     avatarUrl: storedAvatarUrl,
-    user: result.rows[0]
+    user: mapUserRow(result.rows[0])
   });
 }));
 
