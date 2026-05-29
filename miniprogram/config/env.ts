@@ -1,7 +1,7 @@
 export type AppMode = 'dev' | 'online'
 export type LoginMode = 'local' | 'wechat'
 
-export const APP_MODE: AppMode = 'dev'
+export const APP_MODE: AppMode = 'online'
 
 const MODE_CONFIG: Record<AppMode, { apiBase: string; loginMode: LoginMode }> = {
   dev: {
