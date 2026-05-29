@@ -87,6 +87,36 @@ describe('health and auth', () => {
     expect(gearTypes.body.gearTypes).toHaveLength(7);
   });
 
+  it('allows local acceptance accounts only when explicitly enabled', async () => {
+    const previous = process.env.ENABLE_LOCAL_LOGIN;
+    try {
+      delete process.env.ENABLE_LOCAL_LOGIN;
+      await request(app)
+        .post('/auth/local-login')
+        .send({ account: 'alice', password: '123456' })
+        .expect(404);
+
+      process.env.ENABLE_LOCAL_LOGIN = 'true';
+      const alice = await request(app)
+        .post('/auth/local-login')
+        .send({ account: 'alice', password: '123456' })
+        .expect(200);
+      expect(alice.body.token).toMatch(/^sess_/);
+      expect(alice.body.user.nickname).toBe('Alice');
+
+      await request(app)
+        .post('/auth/local-login')
+        .send({ account: 'alice', password: 'wrong' })
+        .expect(401);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.ENABLE_LOCAL_LOGIN;
+      } else {
+        process.env.ENABLE_LOCAL_LOGIN = previous;
+      }
+    }
+  });
+
   it('returns safe errors with trace ids and logs original error context', async () => {
     const validation = await request(app)
       .post('/auth/wechat-login')
@@ -307,6 +337,29 @@ describe('personal calendar events', () => {
 
     const eventId = created.body.event.id;
 
+    const rope = await request(app)
+      .post('/me/gears')
+      .set('authorization', auth(alice.token))
+      .send({ gearTypeId: 'gear_rope', name: '个人绳', quantity: 2 })
+      .expect(201);
+
+    const detail = await request(app)
+      .get(`/me/events/${eventId}/detail`)
+      .set('authorization', auth(alice.token))
+      .expect(200);
+    expect(detail.body.event.type).toBe('personal');
+    expect(detail.body.event.status).toBe('joined');
+    expect(detail.body.participants.map((item: { userId: string }) => item.userId)).toEqual([alice.userId]);
+
+    const personalGear = await request(app)
+      .patch(`/me/events/${eventId}/gear-requirements`)
+      .set('authorization', auth(alice.token))
+      .send({ requirements: [{ participantUserId: alice.userId, gearTypeId: 'gear_rope', userGearId: rope.body.gear.id, quantity: 1 }] })
+      .expect(200);
+    expect(personalGear.body.gearSummary).toEqual([
+      { gearTypeId: 'gear_rope', name: '绳索', iconKey: 'R', quantity: 1 }
+    ]);
+
     const listed = await request(app)
       .get('/me/calendar/events?start=2025-05-01&end=2025-05-31')
       .set('authorization', auth(alice.token))
@@ -493,7 +546,25 @@ describe('teams and team events', () => {
     expect(detail.body.event.status).toBeNull();
     expect(detail.body.participants.map((item: { userId: string }) => item.userId)).toEqual([alice.userId]);
 
-    await request(app).post(`/teams/${teamId}/events/${event.body.event.id}/join`).set('authorization', auth(bob.token)).expect(200);
+    await request(app).post(`/me/events/${event.body.event.id}/accept`).set('authorization', auth(bob.token)).expect(200);
+    const afterAccept = await request(app)
+      .get(`/teams/${teamId}/events/${event.body.event.id}`)
+      .set('authorization', auth(bob.token))
+      .expect(200);
+    expect(afterAccept.body.event.status).toBe('joined');
+    expect(afterAccept.body.participants.map((item: { userId: string }) => item.userId).sort()).toEqual(
+      [alice.userId, bob.userId].sort()
+    );
+
+    await request(app).post(`/me/events/${event.body.event.id}/reject`).set('authorization', auth(bob.token)).expect(200);
+    const afterReject = await request(app)
+      .get(`/teams/${teamId}/events/${event.body.event.id}`)
+      .set('authorization', auth(bob.token))
+      .expect(200);
+    expect(afterReject.body.event.status).toBe('rejected');
+    expect(afterReject.body.participants.map((item: { userId: string }) => item.userId)).toEqual([alice.userId]);
+
+    await request(app).post(`/me/events/${event.body.event.id}/accept`).set('authorization', auth(bob.token)).expect(200);
 
     const afterJoin = await request(app)
       .get(`/teams/${teamId}/events/${event.body.event.id}`)

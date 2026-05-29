@@ -12,7 +12,7 @@ COMMIT_MESSAGE="${1:-部署当前更改}"
 
 cd "$ROOT_DIR"
 
-"$ROOT_DIR/scripts/set-api-base.sh" remote
+"$ROOT_DIR/scripts/set-app-mode.sh" online
 
 npx tsc --noEmit
 npm run build --prefix "$ROOT_DIR/server"

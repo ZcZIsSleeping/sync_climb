@@ -7,8 +7,8 @@
 - 个人日历：连续月历、长按滑动创建事件、事件移动、删除、待接受团队事件确认。
 - 团队日历：团队列表、团队事件创建/删除/加入/退出、只看本 Team 活动筛选。
 - 团队装备：按成员查看装备，团队事件中可为参与者分配装备数量。
-- BaseCamp：本地账号登录、昵称编辑、个人装备类型和数量管理。
-- 后端服务：Express + TypeScript + PostgreSQL，提供日历、团队、装备和本地测试登录接口。
+- BaseCamp：开发模式预注册账号登录、线上模式微信登录、昵称编辑、个人装备类型和数量管理。
+- 后端服务：Express + TypeScript + PostgreSQL，提供日历、团队、装备、微信登录和受控的本地测试登录接口。
 
 ## 项目结构
 
@@ -22,6 +22,16 @@
 ```
 
 ## 本地开发
+
+完整开发流程见 [开发手册](docs/development.md)。
+
+先切到开发模式：
+
+```bash
+npm run mode:dev
+```
+
+开发模式会让小程序连接 `http://localhost:8787`，并使用预注册账号登录。
 
 安装依赖：
 
@@ -49,7 +59,13 @@ DATABASE_URL=postgres://syn_climb:syn_climb@localhost:5432/syn_climb PORT=8787 n
 curl http://localhost:8787/health
 ```
 
-小程序端使用微信开发者工具打开本目录。当前前端默认连接本地后端 `http://localhost:8787`。
+小程序端使用微信开发者工具打开本目录。开发模式下前端连接本地后端 `http://localhost:8787`。
+
+开发模式预注册账号：
+
+- `alice / 123456`
+- `bob / 123456`
+- `xiaozou2 / 123456`
 
 也可以直接使用部署脚本切换前端 API 并启动本地后端：
 
@@ -60,9 +76,10 @@ npm run deploy:local
 脚本会执行：
 
 - 将小程序 `API_BASE` 切到 `http://localhost:8787`。
+- 将小程序登录模式切到预注册账号登录。
 - 安装缺失依赖。
 - 执行本地数据库迁移。
-- 以前台进程启动本地后端服务。
+- 以 `ENABLE_LOCAL_LOGIN=true` 前台启动本地后端服务。
 
 如果需要覆盖默认本地配置：
 
@@ -72,6 +89,12 @@ LOCAL_API=http://127.0.0.1:8787 PORT=8787 DATABASE_URL=postgres://syn_climb:syn_
 
 ## 线上部署
 
+线上模式使用微信登录和线上 API。手动切换：
+
+```bash
+npm run mode:online
+```
+
 部署当前分支到 `www.synclimb.online`：
 
 ```bash
@@ -80,7 +103,7 @@ npm run deploy:online -- "提交备注"
 
 脚本会执行：
 
-- 将小程序 `API_BASE` 切到 `https://www.synclimb.online`。
+- 将小程序切到线上模式：微信登录，API 指向 `https://www.synclimb.online`。
 - 运行前端类型检查、后端构建和后端测试。
 - 提交当前所有本地更改，提交备注来自命令参数，未传时使用 `部署当前更改`。
 - 推送当前分支到 GitHub。
@@ -122,9 +145,11 @@ PORT=8787
 DATABASE_URL=postgres://syn_climb:syn_climb@localhost:5432/syn_climb
 WECHAT_APPID=
 WECHAT_SECRET=
+ENABLE_LOCAL_LOGIN=false
 ```
 
-未配置微信参数时，`/auth/wechat-login` 会使用本地 deterministic openid，方便开发阶段自由切换测试账号。
+未配置微信参数时，`/auth/wechat-login` 会使用本地 deterministic openid，方便后端测试。
+`/auth/local-login` 只有在 `ENABLE_LOCAL_LOGIN=true` 时可用，只允许本地开发使用。
 
 ## 质量检查
 

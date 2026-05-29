@@ -58,6 +58,14 @@ const gearName = text(30);
 const iconKey = text(8);
 const dateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const roomCodeInput = z.string().trim().length(6).transform((value) => value.toUpperCase());
+const localLoginAccount = z.string().trim().toLowerCase().min(1).max(32);
+const localLoginPassword = z.string().min(1).max(64);
+
+const preRegisteredAccounts: Record<string, { password: string; nickname: string; avatarUrl: string }> = {
+  alice: { password: '123456', nickname: 'Alice', avatarUrl: '' },
+  bob: { password: '123456', nickname: 'Bob', avatarUrl: '' },
+  xiaozou2: { password: '123456', nickname: '小邹2', avatarUrl: '' }
+};
 
 const dateBody = z.object({
   title: eventTitle,
@@ -260,6 +268,44 @@ app.post('/auth/wechat-login', asyncRoute(async (req, res) => {
            updated_at = now()
      RETURNING id, nickname, avatar_url`,
     [id('usr'), openid, token, body.nickname, body.avatarUrl]
+  );
+
+  res.json({
+    token,
+    user: {
+      id: result.rows[0].id,
+      nickname: result.rows[0].nickname,
+      avatarUrl: result.rows[0].avatar_url
+    }
+  });
+}));
+
+app.post('/auth/local-login', asyncRoute(async (req, res) => {
+  if (process.env.ENABLE_LOCAL_LOGIN !== 'true') {
+    throw apiError(404, 'local login disabled');
+  }
+
+  const body = z.object({
+    account: localLoginAccount,
+    password: localLoginPassword
+  }).parse(req.body);
+
+  const account = preRegisteredAccounts[body.account];
+  if (!account || account.password !== body.password) {
+    throw apiError(401, 'invalid local account');
+  }
+
+  const token = id('sess');
+  const openid = `local-pre:${body.account}`;
+  const result = await pool.query(
+    `INSERT INTO users (id, openid, session_token, nickname, avatar_url)
+     VALUES ($1, $2, $3, $4, $5)
+     ON CONFLICT (openid) DO UPDATE
+       SET session_token = EXCLUDED.session_token,
+           avatar_url = COALESCE(NULLIF(users.avatar_url, ''), EXCLUDED.avatar_url),
+           updated_at = now()
+     RETURNING id, nickname, avatar_url`,
+    [id('usr'), openid, token, account.nickname, account.avatarUrl]
   );
 
   res.json({
@@ -521,33 +567,237 @@ app.delete('/me/events/:eventId', asyncRoute(async (req: AuthedRequest, res) => 
 }));
 
 app.post('/me/events/:eventId/accept', asyncRoute(async (req: AuthedRequest, res) => {
-  const result = await pool.query(
-    `UPDATE event_participants ep
-     SET status = 'joined', updated_at = now()
-     FROM events e
-     WHERE ep.event_id = e.id AND ep.event_id = $1 AND ep.user_id = $2
-       AND e.team_id IS NOT NULL AND e.deleted_at IS NULL
-       AND ep.status IN ('pending', 'rejected', 'left')
-     RETURNING ep.*`,
-    [req.params.eventId, userId(req)]
-  );
-  if (!result.rowCount) throw apiError(404, 'team event invite not found');
-  res.json({ participant: result.rows[0] });
+  const eventId = pathParam(req.params.eventId, 'eventId');
+  const uid = userId(req);
+  const participant = await tx(async (client) => {
+    const event = await client.query(
+      `SELECT team_id
+       FROM events
+       WHERE id = $1 AND team_id IS NOT NULL AND deleted_at IS NULL`,
+      [eventId]
+    );
+    if (!event.rowCount) throw apiError(404, 'team event not found');
+    const teamId = event.rows[0].team_id as string;
+    await assertTeamMember(client, teamId, uid);
+    const result = await client.query(
+      `INSERT INTO event_participants (id, event_id, user_id, team_id, status, source)
+       VALUES ($1, $2, $3, $4, 'joined', 'self_joined')
+       ON CONFLICT (event_id, user_id) DO UPDATE
+         SET status = 'joined', updated_at = now()
+       RETURNING *`,
+      [id('ep'), eventId, uid, teamId]
+    );
+    return result.rows[0];
+  });
+  res.json({ participant });
 }));
 
 app.post('/me/events/:eventId/reject', asyncRoute(async (req: AuthedRequest, res) => {
-  const result = await pool.query(
-    `UPDATE event_participants ep
-     SET status = 'rejected', updated_at = now()
+  const eventId = pathParam(req.params.eventId, 'eventId');
+  const uid = userId(req);
+  const participant = await tx(async (client) => {
+    const event = await client.query(
+      `SELECT team_id
+       FROM events
+       WHERE id = $1 AND team_id IS NOT NULL AND deleted_at IS NULL`,
+      [eventId]
+    );
+    if (!event.rowCount) throw apiError(404, 'team event not found');
+    const teamId = event.rows[0].team_id as string;
+    await assertTeamMember(client, teamId, uid);
+    const result = await client.query(
+      `INSERT INTO event_participants (id, event_id, user_id, team_id, status, source)
+       VALUES ($1, $2, $3, $4, 'rejected', 'self_joined')
+       ON CONFLICT (event_id, user_id) DO UPDATE
+         SET status = 'rejected', updated_at = now()
+       RETURNING *`,
+      [id('ep'), eventId, uid, teamId]
+    );
+    return result.rows[0];
+  });
+  res.json({ participant });
+}));
+
+app.get('/me/events/:eventId/detail', asyncRoute(async (req: AuthedRequest, res) => {
+  const uid = userId(req);
+  const eventId = pathParam(req.params.eventId, 'eventId');
+  const eventResult = await pool.query(
+    `SELECT e.*, u.nickname AS creator_name, ep.status
      FROM events e
-     WHERE ep.event_id = e.id AND ep.event_id = $1 AND ep.user_id = $2
-       AND e.team_id IS NOT NULL AND e.deleted_at IS NULL
-       AND ep.status = 'pending'
-     RETURNING ep.*`,
-    [req.params.eventId, userId(req)]
+     JOIN users u ON u.id = e.creator_user_id
+     LEFT JOIN event_participants ep ON ep.event_id = e.id AND ep.user_id = $2
+     WHERE e.id = $1 AND e.deleted_at IS NULL`,
+    [eventId, uid]
   );
-  if (!result.rowCount) throw apiError(404, 'pending team event not found');
-  res.json({ participant: result.rows[0] });
+  if (!eventResult.rowCount) throw apiError(404, 'event not found');
+  const event = eventResult.rows[0];
+  if (event.team_id) {
+    await assertTeamMember(pool, event.team_id, uid);
+  } else if (event.creator_user_id !== uid && event.status !== 'joined') {
+    throw apiError(403, 'event not accessible');
+  }
+
+  const participants = await pool.query(
+    `SELECT u.id AS "userId", u.nickname, u.avatar_url AS "avatarUrl", ep.status
+     FROM event_participants ep
+     JOIN users u ON u.id = ep.user_id
+     WHERE ep.event_id = $1 AND ep.status = 'joined'
+     ORDER BY ep.created_at ASC`,
+    [eventId]
+  );
+  const requirements = await pool.query(
+    `SELECT egr.participant_user_id AS "participantUserId",
+            egr.gear_type_id AS "gearTypeId",
+            egr.user_gear_id AS "userGearId",
+            ug.name,
+            gt.name AS "typeName",
+            gt.icon_key AS "iconKey",
+            egr.quantity
+     FROM event_gear_requirements egr
+     JOIN event_participants ep ON ep.event_id = egr.event_id
+       AND ep.user_id = egr.participant_user_id
+       AND ep.status = 'joined'
+     JOIN gear_types gt ON gt.id = egr.gear_type_id
+     JOIN user_gears ug ON ug.id = egr.user_gear_id
+     WHERE egr.event_id = $1 AND egr.quantity > 0
+     ORDER BY egr.created_at ASC`,
+    [eventId]
+  );
+  const summary = await pool.query(
+    `SELECT egr.gear_type_id AS "gearTypeId", gt.name, gt.icon_key AS "iconKey", sum(egr.quantity)::int AS quantity
+     FROM event_gear_requirements egr
+     JOIN event_participants ep ON ep.event_id = egr.event_id
+       AND ep.user_id = egr.participant_user_id
+       AND ep.status = 'joined'
+     JOIN gear_types gt ON gt.id = egr.gear_type_id
+     WHERE egr.event_id = $1 AND egr.quantity > 0
+     GROUP BY egr.gear_type_id, gt.name, gt.icon_key
+     ORDER BY gt.name ASC`,
+    [eventId]
+  );
+
+  res.json({
+    event: mapEventRow({
+      ...event,
+      type: event.team_id ? 'team' : 'personal',
+      status: event.status ?? (event.creator_user_id === uid ? 'joined' : null),
+      is_mine: event.creator_user_id === uid,
+      is_team_event: Boolean(event.team_id),
+      belongs_to_current_team: false,
+      can_edit: event.creator_user_id === uid,
+      can_join: Boolean(event.team_id) && event.creator_user_id !== uid && event.status !== 'joined'
+    }),
+    participants: participants.rows,
+    requirements: requirements.rows,
+    gearSummary: summary.rows
+  });
+}));
+
+app.patch('/me/events/:eventId/gear-requirements', asyncRoute(async (req: AuthedRequest, res) => {
+  const body = z.object({
+    requirements: z.array(z.object({
+      participantUserId: idText,
+      gearTypeId: idText,
+      userGearId: idText,
+      quantity: z.number().int().min(0)
+    }))
+  }).parse(req.body);
+  const uid = userId(req);
+  const eventId = pathParam(req.params.eventId, 'eventId');
+
+  const summary = await tx(async (client) => {
+    const event = await client.query('SELECT * FROM events WHERE id = $1 AND deleted_at IS NULL', [eventId]);
+    if (!event.rowCount) throw apiError(404, 'event not found');
+    if (event.rows[0].creator_user_id !== uid) throw apiError(403, 'only event creator can assign gear');
+
+    if (body.requirements.length) {
+      const participantIds = Array.from(new Set(body.requirements.map((item) => item.participantUserId)));
+      const participants = await client.query(
+        `SELECT user_id
+         FROM event_participants
+         WHERE event_id = $1 AND status = 'joined' AND user_id = ANY($2::text[])`,
+        [eventId, participantIds]
+      );
+      const joined = new Set(participants.rows.map((item) => item.user_id as string));
+      if (participantIds.some((participantId) => !joined.has(participantId))) {
+        throw apiError(400, 'participant must be joined');
+      }
+
+      const gearIds = Array.from(new Set(body.requirements.map((item) => item.userGearId)));
+      const owned = await client.query(
+        `SELECT id, user_id, gear_type_id, quantity
+         FROM user_gears
+         WHERE id = ANY($1::text[])`,
+        [gearIds]
+      );
+      const ownedById = new Map(owned.rows.map((item) => [item.id as string, item]));
+      for (const item of body.requirements) {
+        const gear = ownedById.get(item.userGearId);
+        if (!gear || gear.user_id !== item.participantUserId || gear.gear_type_id !== item.gearTypeId) {
+          throw apiError(400, 'owned gear not found');
+        }
+        if (item.quantity > gear.quantity) throw apiError(400, 'quantity exceeds owned gear');
+      }
+
+      const deletes = body.requirements.filter((item) => item.quantity === 0);
+      if (deletes.length) {
+        const deleteValues = deletes.map((_, index) => `($${index * 2 + 2}, $${index * 2 + 3})`).join(', ');
+        const deleteParams = deletes.flatMap((item) => [item.participantUserId, item.userGearId]);
+        await client.query(
+          `DELETE FROM event_gear_requirements egr
+           USING (VALUES ${deleteValues}) AS deleted(participant_user_id, user_gear_id)
+           WHERE egr.event_id = $1
+             AND egr.participant_user_id = deleted.participant_user_id
+             AND egr.user_gear_id = deleted.user_gear_id`,
+          [eventId, ...deleteParams]
+        );
+      }
+
+      const upserts = body.requirements.filter((item) => item.quantity > 0);
+      if (upserts.length) {
+        const upsertValues = upserts.map((_, index) => {
+          const base = index * 7 + 1;
+          return `($${base}, $${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, $${base + 6})`;
+        }).join(', ');
+        const upsertParams = upserts.flatMap((item) => [
+          id('egr'),
+          eventId,
+          item.participantUserId,
+          item.gearTypeId,
+          item.userGearId,
+          item.quantity,
+          uid
+        ]);
+        await client.query(
+          `INSERT INTO event_gear_requirements
+             (id, event_id, participant_user_id, gear_type_id, user_gear_id, quantity, assigned_by_user_id)
+           VALUES ${upsertValues}
+           ON CONFLICT (event_id, participant_user_id, user_gear_id) DO UPDATE
+             SET quantity = EXCLUDED.quantity,
+                 gear_type_id = EXCLUDED.gear_type_id,
+                 assigned_by_user_id = EXCLUDED.assigned_by_user_id,
+                 updated_at = now()`,
+          upsertParams
+        );
+      }
+    }
+
+    const result = await client.query(
+      `SELECT egr.gear_type_id AS "gearTypeId", gt.name, gt.icon_key AS "iconKey", sum(egr.quantity)::int AS quantity
+       FROM event_gear_requirements egr
+       JOIN event_participants ep ON ep.event_id = egr.event_id
+         AND ep.user_id = egr.participant_user_id
+         AND ep.status = 'joined'
+       JOIN gear_types gt ON gt.id = egr.gear_type_id
+       WHERE egr.event_id = $1 AND egr.quantity > 0
+       GROUP BY egr.gear_type_id, gt.name, gt.icon_key
+       ORDER BY gt.name ASC`,
+      [eventId]
+    );
+    return result.rows;
+  });
+
+  res.json({ gearSummary: summary });
 }));
 
 app.use('/teams', requireAuth);

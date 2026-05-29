@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "mode:dev": "scripts/set-app-mode.sh dev",
+    "mode:online": "scripts/set-app-mode.sh online",
     "deploy:local": "scripts/local-deploy.sh",
     "deploy:online": "scripts/online-deploy.sh"
   },
